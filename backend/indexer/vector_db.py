@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 from pymilvus import MilvusClient
 from pymilvus import (
     MilvusClient, DataType, Function, FunctionType
@@ -8,6 +9,10 @@ from pymilvus import Collection, connections
 from pymilvus import AnnSearchRequest
 from pymilvus import RRFRanker, WeightedRanker
 import numpy as np
+from indexer import genai_api, text_embed, clip_embed
+
+from PIL import Image as ImageLoader
+from io import BytesIO
 
 TEXT_FEATURE_DIM = 256
 IMAGE_FEATURE_DIM = 512
@@ -334,6 +339,22 @@ def insert_json_data(file_path: str = "data.json"):
 
 
 
+def insert_image(id: int, file_path:str, image: ImageLoader):
+    file_path: pathlib.Path = pathlib.Path(file_path).resolve()
+
+    image_format = image.format.lower()
+
+    # Convert to BytesIO
+    buffer = BytesIO()
+    image.save(buffer, format=image_format) 
+    buffer.seek(0)  # rewind to the start of the stream
+
+    text = genai_api.explainImage(file_path.name, image_format, buffer)
+    text_features = text_embed.get_text_embed_doc(text)
+    image_features = clip_embed.get_image_embed(image)
+
+    successed = insert_one(COLLECTION_NAME, id, text, text_features, image_features)
+    return successed
 
 
 if __name__ == "__main__":

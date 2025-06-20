@@ -1,3 +1,4 @@
 volumes/
 images/
 .env
+*.db

@@ -40,7 +40,6 @@ def init():
     except Exception as e:
         print(e)
         prompt_string = "Caption this image."
-    print(CACHE_TEXT)
     
 def store_cache():
     global CACHE_TEXT
