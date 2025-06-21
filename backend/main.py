@@ -8,13 +8,18 @@ from database import models
 from database import database
 from indexer import vector_db
 
+from watcher import *
+watcher = WatchdogService(path="./images")  # can load from config/env
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.init_db()
     if vector_db.is_collection_exist(vector_db.COLLECTION_NAME) == False:
         vector_db.create_embed_db(vector_db.COLLECTION_NAME)
+    watcher.start()
     yield
+    watcher.stop()
 
 app = FastAPI(lifespan=lifespan)
 

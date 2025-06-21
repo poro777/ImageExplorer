@@ -385,6 +385,7 @@ def insert_image(id: int, filename:str, image: ImageLoader, partition_id: Option
     return successed
 
 def query_images_by_text(top_k:int, text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed: bool, partition_id: Optional[int] = None):
+    '''return [{"id":int, "distance":float}, ...]'''
     clip_text_features = clip_embed.get_text_embed(text)
     text_features = text_embed.get_text_embed_query(text)
     use_image_embed = False

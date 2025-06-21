@@ -14,23 +14,31 @@ from sqlalchemy.exc import IntegrityError
 import indexer
 
 from router.file_api import getFolder, getImageFile
+from datetime import datetime
 
 router = APIRouter(
     prefix="/image",
     tags=["sqlite_db"],
 )
 
+def mapFolder(image: Image):
+    result = dict(image)
+    result['directory'] = image.directory.path
+    return result
 
-
-@router.get("/", response_model=List[Image])
+@router.get("/")
 def read_images(session: Session = Depends(get_session)):
-    return session.exec(select(Image)).all()
+    images = session.exec(select(Image)).all()
+    
+    return list(map(mapFolder, images))
 
 # DELETE /images
 @router.delete("/delete_all")
 def delete_all_images(session: Session = Depends(get_session)):
     session.exec(text("DELETE FROM image"))  # or session.query(Image).delete()
     session.commit()
+    # override a new vector db
+    indexer.create_embed_db(indexer.COLLECTION_NAME)
     return {"detail": "All images deleted"}
 
 @router.post("/create", response_model=Image)
@@ -56,7 +64,9 @@ def create_image(file: str, session: Session = Depends(get_session)):
         session.commit()
         session.refresh(directory)
 
-    image = Image(directory_id=directory.id, filename=name, width=pil_image.width, height=pil_image.height)
+    image = Image(directory_id=directory.id, filename=name, 
+                  width=pil_image.width, height=pil_image.height, 
+                  last_modified=datetime.fromtimestamp(file.stat().st_mtime))
     session.add(image)
 
     try:
@@ -101,7 +111,7 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
     return {"detail": "Image deleted"}
 
 # GET /images/lookup?file=...
-@router.get("/lookup", response_model=Optional[Image])
+@router.get("/lookup")
 def get_image_file(file: str, session: Session = Depends(get_session)):
     file:Path = getImageFile(file)
 
@@ -129,11 +139,11 @@ def get_image_file(file: str, session: Session = Depends(get_session)):
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
     
-    return image
+    return mapFolder(image)
 
 
 # GET /images/by-folder?path=/data/images/cats/
-@router.get("/folder", response_model=List[Image])
+@router.get("/folder")
 def get_images_by_folder(path: str, session: Session = Depends(get_session)):
     path = getFolder(path)
 
@@ -149,4 +159,4 @@ def get_images_by_folder(path: str, session: Session = Depends(get_session)):
     if not directory:
         raise HTTPException(status_code=404, detail="Directory not found")
     
-    return directory.images
+    return list(map(mapFolder, directory.images))
