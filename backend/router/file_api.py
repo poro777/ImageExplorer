@@ -16,7 +16,10 @@ def getImageFile(file_path: str) -> Path | None:
     else:
         return image_path
 
-def getFolder(path: str) -> Path | None:
+def getFolder(path: str | None) -> Path | None:
+    if path is None:
+        return None
+    
     folder = (BASE_DIR / path).resolve()
     if (not folder.is_dir()):
         return None

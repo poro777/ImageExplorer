@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+from typing import List, Optional
 from pymilvus import MilvusClient
 from pymilvus import (
     MilvusClient, DataType, Function, FunctionType
@@ -40,6 +41,25 @@ FIELD_CN_TEXT_SPARSE = "cn_text_sparse" # BM 25
 def is_collection_exist(collection: str):
     client = MilvusClient(uri=milvus_uri, token=milvus_token)  
     return client.has_collection(collection_name=collection)
+
+def is_partition_exist(collection:str, partition_name: str):
+    client = MilvusClient(uri=milvus_uri, token=milvus_token)
+
+    return client.has_partition(
+        collection_name=collection,
+        partition_name=partition_name
+    )
+    
+def create_partition(collection:str,  new_partition_name: str):
+    if is_partition_exist(collection, new_partition_name):
+        return
+    
+    client = MilvusClient(uri=milvus_uri, token=milvus_token)
+
+    client.create_partition(
+        collection_name = collection,
+        partition_name = new_partition_name
+    )
 
 
 def create_embed_db(collection: str):
@@ -137,12 +157,12 @@ def create_embed_db(collection: str):
         index_params=index_params
     )
 
-def delete_empty_data():
+def delete_empty_data(collection: str):
     client = MilvusClient(uri=milvus_uri, token=milvus_token)  
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
 
     # Step 2: Load the collection
-    collection = Collection(COLLECTION_NAME)
+    collection = Collection(collection)
     collection.load()
     results = collection.query(
         expr="",  # empty expr returns all data
@@ -155,14 +175,14 @@ def delete_empty_data():
         return
 
     res = client.delete(
-        collection_name=COLLECTION_NAME,
+        collection_name=collection,
         # highlight-next-line
         ids=ids
     )
 
 
 
-def query_one(collection: str, top_k:int = 10, query_text: str = "", query_text_embed = None, query_clip_text_embed =  None, query_clip_image_embed =  None, 
+def query(collection: str, partitions:Optional[List[str]] ,top_k:int = 10, query_text: str = "", query_text_embed = None, query_clip_text_embed =  None, query_clip_image_embed =  None, 
                   use_text_embed = True, use_bm25 = True, use_joint_embed = True, use_image_embed = False
                   ):
     '''
@@ -237,6 +257,7 @@ def query_one(collection: str, top_k:int = 10, query_text: str = "", query_text_
     ranker = RRFRanker(60)
     res = client.hybrid_search(
         collection_name=collection,
+        partition_names=partitions,
         reqs=reqs,
         ranker=ranker,
         output_fields=[],
@@ -246,8 +267,13 @@ def query_one(collection: str, top_k:int = 10, query_text: str = "", query_text_
     return [{FIELD_ID: hit[FIELD_ID], "distance": hit["distance"]} 
             for hit in res]
 
-def insert_one(collection: str, id = None, text= None, text_dense= None, image_dense= None):
+def insert_one(collection: str, partition:str, id = None, text= None, text_dense= None, image_dense= None) -> bool:
     client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+
+    if is_partition_exist(collection, partition) == False:
+        create_partition(collection, partition)
+
+
 
     if id is None:
         return False
@@ -269,8 +295,9 @@ def insert_one(collection: str, id = None, text= None, text_dense= None, image_d
     ]
 
     try:
-        res = client.insert(
+        res = client.upsert(
             collection_name=collection,
+            partition_name=partition,
             data=data
         )
         return True
@@ -293,16 +320,17 @@ def delete_one(collection: str, id):
         return False
     
 
-def list_data(collection: str):
+def list_data(collection: str, partitions: Optional[List[str]] = None):
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
 
-    collection = Collection(collection)
+    collection:Collection = Collection(collection)
     collection.load()
 
     results = collection.query(
         expr="",  # empty expr returns all data
         output_fields=[FIELD_ID, FIELD_TEXT],  # list all text fields you want to extract
-        limit=100
+        limit=100,
+        partition_names=partitions
     )
 
     return [ {FIELD_ID: tag[FIELD_ID],FIELD_TEXT: tag[FIELD_TEXT]} 
@@ -339,9 +367,8 @@ def insert_json_data(file_path: str = "data.json"):
 
 
 
-def insert_image(id: int, file_path:str, image: ImageLoader):
-    file_path: pathlib.Path = pathlib.Path(file_path).resolve()
 
+def insert_image(id: int, filename:str, image: ImageLoader, partition_id: Optional[int] = None) -> bool:
     image_format = image.format.lower()
 
     # Convert to BytesIO
@@ -349,13 +376,29 @@ def insert_image(id: int, file_path:str, image: ImageLoader):
     image.save(buffer, format=image_format) 
     buffer.seek(0)  # rewind to the start of the stream
 
-    text = genai_api.explainImage(file_path.name, image_format, buffer)
+    text = genai_api.explainImage(filename, image_format, buffer)
     text_features = text_embed.get_text_embed_doc(text)
     image_features = clip_embed.get_image_embed(image)
 
-    successed = insert_one(COLLECTION_NAME, id, text, text_features, image_features)
+    partition = str(partition_id) if partition_id is not None else "_default"
+    successed = insert_one(COLLECTION_NAME, partition, id, text, text_features, image_features)
     return successed
 
+def query_images_by_text(top_k:int, text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed: bool, partition_id: Optional[int] = None):
+    clip_text_features = clip_embed.get_text_embed(text)
+    text_features = text_embed.get_text_embed_query(text)
+    use_image_embed = False
+    clip_image_features = None
+    top_k = 10
 
+    partitions = [str(partition_id)] if partition_id is not None else None
+    results = query(COLLECTION_NAME, partitions, top_k, text, text_features, clip_text_features, clip_image_features, 
+                                use_text_embed, use_bm25, use_joint_embed, use_image_embed )
+
+    return results
+
+
+
+    
 if __name__ == "__main__":
     pass

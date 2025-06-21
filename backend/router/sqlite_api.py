@@ -11,7 +11,7 @@ from database.database import get_session
 from database import database
 from sqlalchemy.exc import IntegrityError
 
-from indexer import vector_db
+import indexer
 
 from router.file_api import getFolder, getImageFile
 
@@ -69,16 +69,19 @@ def create_image(file: str, session: Session = Depends(get_session)):
             detail=f"Cannot insert image: {e}"
         )
     
-    try:
-        vector_db.insert_image(image.id, file.as_posix(), pil_image)
-    except Exception as e:
-        image = session.get(Image, image.id)
+    def rollback(e):
         session.delete(image)
         session.commit()
         raise HTTPException(
             status_code=400,
             detail=f"Cannot insert image: {e}"
         )
+
+    try:
+        if indexer.insert_image(image.id, name, pil_image, image.directory_id) == False:
+            rollback("Vector db insert failed")
+    except Exception as e:
+        rollback(e)
     
     return image
 
@@ -88,12 +91,17 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
     image = session.get(Image, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
+    
+
+    successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
+    if successed == False:
+        raise HTTPException(status_code=500, detail="Vector db delete failed")
     session.delete(image)
     session.commit()
     return {"detail": "Image deleted"}
 
 # GET /images/lookup?file=...
-@router.get("lookup", response_model=Optional[Image])
+@router.get("/lookup", response_model=Optional[Image])
 def get_image_file(file: str, session: Session = Depends(get_session)):
     file:Path = getImageFile(file)
 
