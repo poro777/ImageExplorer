@@ -13,6 +13,11 @@ def get_directory_id(path: str) -> int | None:
             return None
 
 
+def mapFolder(image: Image):
+    result = dict(image)
+    result['directory'] = image.directory.path
+    return result
+
 def query_images_by_id_list(ids: List[int]):
     with Session(engine) as session:
         if len(ids) == 0:
@@ -20,10 +25,5 @@ def query_images_by_id_list(ids: List[int]):
         statement = select(Image).where(Image.id.in_(ids))
         results = session.exec(statement).all()
 
-        def convert(image: Image):
-            result = dict(image)
-            result["directory"] = image.directory.path
-            return result
-
-        return list(map(convert, results))
+        return list(map(mapFolder, results))
     
