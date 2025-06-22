@@ -12,7 +12,7 @@ from pymilvus import RRFRanker, WeightedRanker
 import numpy as np
 from indexer import genai_api, text_embed, clip_embed
 
-from PIL import Image as ImageLoader
+from PIL.ImageFile import ImageFile
 from io import BytesIO
 
 TEXT_FEATURE_DIM = 256
@@ -368,7 +368,7 @@ def insert_json_data(file_path: str = "data.json"):
 
 
 
-def insert_image(id: int, filename:str, image: ImageLoader, partition_id: Optional[int] = None) -> bool:
+def insert_image(id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:
     image_format = image.format.lower()
 
     # Convert to BytesIO

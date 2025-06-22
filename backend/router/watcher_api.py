@@ -8,13 +8,13 @@ from database import models
 from typing import List, Optional, Union
 from PIL import Image as ImageLoader
 from database.models import Image, Directory
-from database.database import get_session
+from database.database import get_session, engine
 from database import database
 from sqlalchemy.exc import IntegrityError
 
 import indexer
 
-from router.file_api import getFolder, getImageFile, ALLOWED_EXTENSIONS
+from router.file_api import getFolder, getPathOfImageFile, ALLOWED_EXTENSIONS
 from datetime import datetime
 
 router = APIRouter(
@@ -25,6 +25,7 @@ router = APIRouter(
 
 @router.post("/add", response_model=List[Image])
 def create_image(path: str, session: Session = Depends(get_session)):
+    '''inesrt or update a batch of files in a folder'''
     path:Path = getFolder(path)
 
     if path is None:
@@ -44,12 +45,6 @@ def create_image(path: str, session: Session = Depends(get_session)):
     files = []
     for file in path.iterdir():
         if file.is_file() and file.suffix.lower() in ALLOWED_EXTENSIONS:
-
-            try:
-                pil_image = ImageLoader.open(file)
-            except Exception as e:
-                print(e)
-                continue
             name = file.name
 
             image = session.exec(select(Image).where(
@@ -57,13 +52,26 @@ def create_image(path: str, session: Session = Depends(get_session)):
                 Image.filename == name)
             ).first()
             
-            if image is not None: # image already exised
-                continue
+            try:
+                if image is not None: # image already exists
+                    if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file.stat().st_mtime):
+                        continue # file not modified
 
-            image = Image(directory_id=directory.id, filename=name, 
-                        width=pil_image.width, height=pil_image.height, 
-                        last_modified=datetime.fromtimestamp(file.stat().st_mtime))
-            session.add(image)
+                    pil_image = ImageLoader.open(file)
+                    image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
+                    image.width=pil_image.width
+                    image.height=pil_image.height
+
+                else:
+                    pil_image = ImageLoader.open(file)
+                    image = Image(directory_id=directory.id, filename=name, 
+                                width=pil_image.width, height=pil_image.height, 
+                                last_modified=datetime.fromtimestamp(file.stat().st_mtime))
+                    session.add(image)
+            except Exception as e:
+                print(e)
+                continue
+            
             files.append((image, name, pil_image))
 
     try:

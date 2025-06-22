@@ -9,7 +9,7 @@ router = APIRouter(
 BASE_DIR = Path("images").resolve()
 ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
 
-def getImageFile(file_path: str) -> Path | None:
+def getPathOfImageFile(file_path: str) -> Path | None:
     image_path = (BASE_DIR / file_path).resolve()
     if (not image_path.is_file() or image_path.suffix.lower() not in ALLOWED_EXTENSIONS):
         return None
@@ -28,7 +28,7 @@ def getFolder(path: str | None) -> Path | None:
     
 @router.get("/file")
 def get_image(path: str):
-    image_path = getImageFile(path)
+    image_path = getPathOfImageFile(path)
 
     # Ensure it's inside static dir and is a valid image file
     if image_path is None:
