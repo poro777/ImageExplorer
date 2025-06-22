@@ -38,9 +38,10 @@ def query_text(text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed:
 
     distances = {result[indexer.vector_db.FIELD_ID]: result["distance"] for result in results}
     
-    def convert(image: dict):
-        image['distance'] = distances[image['id']]
-        return image
+    def convert(image: Image):
+        result = dict(image)
+        result['distance'] = distances[image.id]
+        return result
     
     return sorted(map(convert, images), key=lambda x: x['distance'], reverse=True)
 

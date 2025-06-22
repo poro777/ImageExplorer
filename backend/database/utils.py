@@ -16,12 +16,6 @@ def get_directory_id(path: str) -> int | None:
         else:
             return None
 
-
-def mapFolder(image: Image):
-    result = dict(image)
-    result['directory'] = image.directory.path
-    return result
-
 def query_images_by_id_list(ids: List[int]):
     with Session(engine) as session:
         if len(ids) == 0:
@@ -29,8 +23,8 @@ def query_images_by_id_list(ids: List[int]):
         statement = select(Image).where(Image.id.in_(ids))
         results = session.exec(statement).all()
 
-        return list(map(mapFolder, results))
-
+        return results
+    
 def get_all_listening_paths():
     with Session(engine) as session:
         statement = select(Directory).where(Directory.is_watching == True)

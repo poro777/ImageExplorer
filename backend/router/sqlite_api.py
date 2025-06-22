@@ -16,7 +16,6 @@ import indexer
 
 from router.file_api import getFolderPath, getPathOfImageFile
 from datetime import datetime
-from database.utils import mapFolder
 
 router = APIRouter(
     prefix="/image",
@@ -28,8 +27,7 @@ router = APIRouter(
 @router.get("/")
 def read_images(session: Session = Depends(get_session)):
     images = session.exec(select(Image)).all()
-    
-    return list(map(mapFolder, images))
+    return images
 
 # DELETE /images
 @router.delete("/delete_all")
@@ -65,23 +63,20 @@ def inesrt_or_update_image(file: str, session: Session):
         session.refresh(directory)
 
 
-    image = session.exec(select(Image).where(
-        Image.directory_id == directory.id,
-        Image.filename == name)
-    ).first()
+    image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
 
     if image is None:
         pil_image = loadImage(file)
         image = Image(directory_id=directory.id, filename=name, 
                   width=pil_image.width, height=pil_image.height, 
-                  last_modified=datetime.fromtimestamp(file.stat().st_mtime))
+                  last_modified=datetime.fromtimestamp(file.stat().st_mtime,),
+                  full_path=file.as_posix())
         session.add(image)
     else:
         if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file.stat().st_mtime):
             # file not modified
             return None
         
-
         pil_image = loadImage(file)
         image.width=pil_image.width
         image.height=pil_image.height
@@ -94,6 +89,7 @@ def inesrt_or_update_image(file: str, session: Session):
 
         session.commit()
         
+        session.refresh(image)
     except Exception as e:
         session.rollback()
         raise HTTPException(
@@ -111,18 +107,7 @@ def create_image(file: str, session: Session = Depends(get_session)):
 
 def delete_image(file: Path):
     with Session(database.engine) as session:
-        path = file.parent.as_posix()
-        name = file.name
-
-        directory = session.exec(select(Directory).where(Directory.path == path)).first()
-
-        if directory is None:
-            return False
-        
-        image = session.exec(select(Image).where(
-            Image.directory_id == directory.id,
-            Image.filename == name)
-        ).first()
+        image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
 
         if image is None:
             return False
@@ -142,7 +127,6 @@ def delete_image_by_id(image_id: int, session: Session = Depends(get_session)):
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
     
-
     successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
     if successed == False:
         raise HTTPException(status_code=500, detail="Vector db delete failed")
@@ -151,39 +135,23 @@ def delete_image_by_id(image_id: int, session: Session = Depends(get_session)):
     return {"detail": "Image deleted"}
 
 # GET /images/lookup?file=...
-@router.get("/lookup")
+@router.get("/lookup", response_model=Image)
 def get_image_file(file: str, session: Session = Depends(get_session)):
     file:Path = getPathOfImageFile(file)
 
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
     
-    path = file.parent.as_posix()
-    name = file.name
-
-    directory = session.exec(
-        select(Directory).where(Directory.path == path)
-    ).first()
-
-    if not directory:
-        raise HTTPException(status_code=404, detail="Directory not found")
-
-    # Lookup the image by directory_id and filename
-    image = session.exec(
-        select(Image).where(
-            Image.directory_id == directory.id,
-            Image.filename == name
-        )
-    ).first()
+    image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
 
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
     
-    return mapFolder(image)
+    return image
 
 
 # GET /images/by-folder?path=/data/images/cats/
-@router.get("/folder")
+@router.get("/folder", response_model=List[Image])
 def get_images_by_folder(path: str, session: Session = Depends(get_session)):
     path = getFolderPath(path)
 
@@ -199,4 +167,4 @@ def get_images_by_folder(path: str, session: Session = Depends(get_session)):
     if not directory:
         raise HTTPException(status_code=404, detail="Directory not found")
     
-    return list(map(mapFolder, directory.images))
+    return directory.images

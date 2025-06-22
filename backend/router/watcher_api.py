@@ -68,7 +68,8 @@ def add_path_to_listener(path: str, session: Session = Depends(get_session)):
                     pil_image = ImageLoader.open(file)
                     image = Image(directory_id=directory.id, filename=name, 
                                 width=pil_image.width, height=pil_image.height, 
-                                last_modified=datetime.fromtimestamp(file.stat().st_mtime))
+                                last_modified=datetime.fromtimestamp(file.stat().st_mtime),
+                                full_path=file.resolve().as_posix())
                     session.add(image)
             except Exception as e:
                 print(e)

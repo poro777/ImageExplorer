@@ -21,7 +21,7 @@ class Image(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     filename: str
-
+    full_path : str = Field(default=None, unique=True)
     width: Optional[int] = None
     height: Optional[int] = None
     thumbnail_path: Optional[str] = Field(default=None, unique=True)
