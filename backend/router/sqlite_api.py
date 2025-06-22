@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 import indexer
 
-from router.file_api import getFolder, getPathOfImageFile
+from router.file_api import getFolderPath, getPathOfImageFile
 from datetime import datetime
 from database.utils import mapFolder
 
@@ -185,7 +185,7 @@ def get_image_file(file: str, session: Session = Depends(get_session)):
 # GET /images/by-folder?path=/data/images/cats/
 @router.get("/folder")
 def get_images_by_folder(path: str, session: Session = Depends(get_session)):
-    path = getFolder(path)
+    path = getFolderPath(path)
 
     if path is None:
         raise HTTPException(status_code=404, detail="Directory not found")

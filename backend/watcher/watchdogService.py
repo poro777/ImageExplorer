@@ -9,9 +9,9 @@ import threading
 
 from database.database import engine
 
-from router.file_api import getPathOfImageFile, ALLOWED_EXTENSIONS
+from router.file_api import getPathOfImageFile, getFolderPath, ALLOWED_EXTENSIONS
 from router.sqlite_api import inesrt_or_update_image, delete_image
-from database.utils import move_image_path
+from database.utils import move_image_path, get_all_listening_paths
 
 def is_file_ready(path, timeout=2):
     """Wait until file size is stable (not changing)."""
@@ -46,7 +46,7 @@ class ImageChangeHandler(FileSystemEventHandler):
         while is_file_ready(event.src_path) == False:
             pass
         
-        print(f"[watchdog] Detected file created: {event.src_path}")
+        print(f"[watchdog - Detected] File created: {event.src_path}")
 
         with Session(engine) as session:
             try:
@@ -64,7 +64,7 @@ class ImageChangeHandler(FileSystemEventHandler):
         
         file = Path(event.src_path).resolve()
  
-        print(f"[watchdog] Detected file deleted: {event.src_path}")
+        print(f"[watchdog - Detected] File deleted: {event.src_path}")
         if delete_image(file):
             print(f"[watchdog] File deleted: {event.src_path}")
         else:
@@ -74,7 +74,7 @@ class ImageChangeHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if not is_image(Path(event.src_path)):
             return
-        print("[watchdog] Detected file modified:", event.src_path)
+        print("[watchdog - Detected] File modified:", event.src_path)
     
         try:
             with open(event.src_path, "r") as f:
@@ -101,18 +101,51 @@ class ImageChangeHandler(FileSystemEventHandler):
     def on_moved(self, event):
         if not is_image(Path(event.src_path)):
             return
-        print(f"[watchdog] Detected file moved: {event.src_path} -> {event.dest_path}")
+        print(f"[watchdog - Detected] File moved: {event.src_path} -> {event.dest_path}")
         self.on_moved_name[event.dest_path] = event.src_path
 
 class WatchdogService:
-    def __init__(self, path: str):
-        self.path = Path(path).resolve()
+    def __init__(self):
         self.observer = Observer()
         self.handler = ImageChangeHandler()
+        self.watches = {}
+    
+    def add(self, path: Path):
+
+        path = path.resolve()
+
+        if path.is_dir() == False:
+            return False
+        if path in self.watches:
+            return True
+        
+        print(f"[watchdog] Watching {path}")
+        #self.observer.stop()
+        watch = self.observer.schedule(self.handler, str(path), recursive=False)
+        self.watches[path.as_posix()] = watch
+
+        return True
+
+    def remove(self, path: Path):
+        path = path.resolve()
+
+        if path.is_dir() == False or (path.as_posix() not in self.watches):
+            return False
+        
+        print(f"[watchdog] Stop Watching {path}")
+
+        watch = self.watches.pop(path.as_posix())
+        self.observer.unschedule(watch)
+
+        return True
+
 
     def start(self):
-        print(f"[watchdog] Watching {self.path}")
-        self.observer.schedule(self.handler, str(self.path), recursive=False)
+        paths = get_all_listening_paths()
+        print(f"[watchdog] Starting...")
+        for path in paths:
+            self.add(Path(path))
+        
         self.observer.start()
 
     def stop(self):

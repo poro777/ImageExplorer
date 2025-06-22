@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
 from fastapi import Depends
-from sqlmodel import Session, select, text
+from sqlmodel import Session, delete, select, text
 from database import models
 from typing import List, Optional, Union
 from PIL import Image as ImageLoader
@@ -14,8 +14,10 @@ from sqlalchemy.exc import IntegrityError
 
 import indexer
 
-from router.file_api import getFolder, getPathOfImageFile, ALLOWED_EXTENSIONS
+from router.file_api import getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
 from datetime import datetime
+from watcher import fs_watcher
+
 
 router = APIRouter(
     prefix="/dir",
@@ -24,9 +26,9 @@ router = APIRouter(
 
 
 @router.post("/add", response_model=List[Image])
-def create_image(path: str, session: Session = Depends(get_session)):
+def add_path_to_listener(path: str, session: Session = Depends(get_session)):
     '''inesrt or update a batch of files in a folder'''
-    path:Path = getFolder(path)
+    path:Path = getFolderPath(path)
 
     if path is None:
         raise HTTPException(status_code=404, detail="Path not found")
@@ -98,4 +100,37 @@ def create_image(path: str, session: Session = Depends(get_session)):
         session.refresh(image)
         images.append(image)
 
+    fs_watcher.add(path)
     return images
+
+
+@router.delete("/remove")
+def remove_path_from_listener(path: str, delete_images: bool = False, session: Session = Depends(get_session)):
+    path:Path = getFolderPath(path)
+
+    if path is None:
+        raise HTTPException(status_code=404, detail="Path not found")
+    
+    if fs_watcher.remove(path) == False:
+        raise HTTPException(status_code=400, detail="Path is not listening")
+
+    directory = session.exec(
+        select(Directory).where(Directory.path == path.as_posix())
+    ).first()
+
+    if directory is None:
+        raise HTTPException(status_code=404, detail="Directory not found")
+    
+    try:
+        directory.is_watching = False
+        if delete_images:
+            indexer.delete_by_list(indexer.COLLECTION_NAME, [image.id for image in directory.images])
+            session.exec(delete(Image).where(Image.directory_id == directory.id))
+        session.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Cannot delete images")
+
+@router.get("/listening", response_model=List[Directory])
+def get_listening_paths(session: Session = Depends(get_session)):
+    directories = session.exec(select(Directory).where(Directory.is_watching == True)).all()
+    return directories

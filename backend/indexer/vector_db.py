@@ -304,22 +304,24 @@ def insert_one(collection: str, partition:str, id = None, text= None, text_dense
     except Exception as e:
         print(e)
         return False
-    
 
-def delete_one(collection: str, id):
+def delete_by_list(collection: str, ids: List[int]):
     client = MilvusClient(uri=milvus_uri, token=milvus_token)  
 
     try:
         res = client.delete(
             collection_name=collection,
-            ids=[id]
+            ids=ids
         )
         return True
     except Exception as e:
         print(e)
         return False
-    
 
+def delete_one(collection: str, id):
+    return delete_by_list(collection, [id])
+
+    
 def list_data(collection: str, partitions: Optional[List[str]] = None):
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
 

@@ -16,7 +16,7 @@ def getPathOfImageFile(file_path: str) -> Path | None:
     else:
         return image_path
 
-def getFolder(path: str | None) -> Path | None:
+def getFolderPath(path: str | None) -> Path | None:
     if path is None:
         return None
     

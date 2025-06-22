@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from sqlmodel import Session
 from database.database import engine
 import indexer.vector_db
-from router.file_api import getFolder
+from router.file_api import getFolderPath
 from database.utils import get_directory_id, query_images_by_id_list
 from database.models import Image, Directory
 
@@ -26,7 +26,7 @@ def query_text(text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed:
 
     top_k = 10
 
-    path = getFolder(path)
+    path = getFolderPath(path)
     partition_id = get_directory_id(path.as_posix()) if path is not None else None
     
     if partition_id is None and path is not None:
@@ -47,7 +47,7 @@ def query_text(text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed:
 @router.get('/list')
 def query_all(path: Optional[str] = None):
 
-    path = getFolder(path)
+    path = getFolderPath(path)
     partition_id = get_directory_id(path.as_posix()) if path is not None else None
     
     if partition_id is None and path is not None:

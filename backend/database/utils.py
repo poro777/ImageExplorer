@@ -31,6 +31,13 @@ def query_images_by_id_list(ids: List[int]):
 
         return list(map(mapFolder, results))
 
+def get_all_listening_paths():
+    with Session(engine) as session:
+        statement = select(Directory).where(Directory.is_watching == True)
+        results = session.exec(statement).all()
+
+        return list(map(lambda x: x.path, results))
+
 
 def move_image_path(current: Path, new: Path):
     '''move image from current path to new path
