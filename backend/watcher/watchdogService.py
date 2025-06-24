@@ -2,6 +2,7 @@
 from datetime import datetime
 import os
 import time
+from typing import Dict, List, Optional
 from sqlmodel import Session
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -14,15 +15,13 @@ from router.file_api import getPathOfImageFile, getFolderPath, ALLOWED_EXTENSION
 from router.sqlite_api import inesrt_or_update_image, delete_image
 from database.utils import move_image_path, get_all_listening_paths, query_images_by_path
 
-DELAY_TIME = 0.2
-
 dict_lock = threading.Lock()
+run_thread = False
 
-deleted_files = dict()
-created_files = dict()
-moved_files = dict()
-modified_files = dict()
-may_moved_files = dict()
+list_lock = threading.Lock()
+waitting_list: Dict[str, List] = dict()
+condition = threading.Condition(lock=list_lock)
+DELAY = 1
 
 def is_file_ready(path, timeout=2):
     """Wait until file size is stable (not changing)."""
@@ -53,88 +52,177 @@ def only_update_metadata(file: Path):
     
     return datetime.fromtimestamp(mtime) == image.last_modified
         
+class FileChangeType:
+    CREATED = "created"
+    DELETED = "deleted"
+    MODIFIED = "modified"
+    MOVED = "moved"
+    REPLACED = "replaced"
 
-def create(path: str, mtime: float):
-    with dict_lock:
-        cmtime = created_files.get(path, None)
-    on_creating = cmtime is not None
+class ChangedFile:
+    def __init__(self, src: Path,  change_type: str, mtime: datetime, dst: Optional[Path] = None):
+        self.src = src.resolve()
+        self.dst = dst.resolve() if dst else None
+        self.type = change_type
+        self.mtime = mtime
+        self.time = time.time()
 
+    def _match_move_cond(self, src: Optional[Path], smtime: Optional[datetime], dst: Optional[Path], dmtime: Optional[datetime]):
+        if src is None or dst is None or smtime is None or dmtime is None:
+            return False
+        return (src != dst) and (src.name == dst.name) and (smtime == dmtime)
+
+    def _same_path(self, src: Optional[Path], dst: Optional[Path]):
+        if src is None or dst is None:
+            return False
+        return (src == dst)
     
-    if not on_creating:
-        # file is already processed
-        # Move: [create -> delete]
-        print("[watchdog] create ignore", path)
-        return
+    def change_type(self, type: str, path: Path = None, mtime: datetime = None):
+        '''
+            input type: create, delete, modify
+        '''
+        
+        path = path.resolve() if path else None
+        match self.type:
+            case FileChangeType.CREATED:
+                if type == FileChangeType.DELETED and self._match_move_cond(self.src, self.mtime, path, mtime):
+                    # with same basename and mtime, consider it as a move
+                    self.type = FileChangeType.MOVED
+                    self.dst = self.src
+                    self.src = path
+                elif type == FileChangeType.MODIFIED and self._same_path(self.src, path):
+                    # if modified, keep the same src and update mtime
+                    self.type = FileChangeType.MODIFIED
+                    self.mtime = mtime
+                else:
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    return False
+                
+            case FileChangeType.DELETED:
+                if type == FileChangeType.CREATED and self._match_move_cond(self.src, self.mtime, path, mtime):
+                    # with same basename and mtime, consider it as a move
+                    self.type = FileChangeType.MOVED
+                    self.dst = path
+                elif type == FileChangeType.DELETED and not self._same_path(self.src, path):
+                    # TODO: delete with same basename but different path
+                    # consider it as a move and replace if there is create later.
+                    return False
+                else:
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    return False
+                
+            case FileChangeType.MODIFIED: 
+                if type == FileChangeType.MODIFIED and self._same_path(self.src, path):
+                    self.mtime = mtime
+                elif type == FileChangeType.DELETED and self._same_path(self.src, path):
+                    # if deleted, keep the same src and update mtime
+                    self.type = FileChangeType.DELETED
+                    self.mtime = mtime
+                else:
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    return False
+                
+            case FileChangeType.MOVED:
+                print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                return False
+            case FileChangeType.REPLACED:
+                print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                return False
+            case _:
+                raise ValueError(f"Unknown change type: {type}")
+            
+        self.time = time.time()
+        return True
     
-    with Session(engine) as session:
-        try:
-            if inesrt_or_update_image(path, session) is not None:
-                print(f"[watchdog] Create image: {path}")
+    def __repr__(self):
+        return f"ChangedFile(src={self.src}, change_type={self.type}, dst={self.dst})"
+    
+
+
+
+def process_file(file: ChangedFile):
+    print(f"[watchdog - Processing] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
+    file_path = file.src.as_posix()
+    if file.type == FileChangeType.CREATED:
+        with Session(engine) as session:
+            try:
+                if inesrt_or_update_image(file_path, session) is not None:
+                    print(f"[watchdog - Result] Create image: {file_path}")
+                else:
+                    print(f"[watchdog - Result] Error creating image: {file_path}")
+            except Exception as e:
+                print(f'[watchdog - Result] Error during creation: {e}')
+
+    elif file.type == FileChangeType.DELETED:
+        if delete_image(file.src):
+            print(f"[watchdog - Result] File deleted: {file_path}")
+        else:
+            print(f"[watchdog - Result] Error deleting file: {file_path}")
+
+    elif file.type == FileChangeType.MODIFIED:
+        with Session(engine) as session:
+            try:
+                if inesrt_or_update_image(file_path, session) is not None:
+                    print(f"[watchdog - Result] Update image: {file_path}")
+                else:
+                    print("[watchdog] Modify ignore: ", file_path)
+            except Exception as e:
+                print(f'[watchdog - Result] Error to update: {e}')
+
+    elif file.type == FileChangeType.MOVED:
+        if move_image_path(file.src, file.dst, True):
+            print(f"[watchdog - Result] Move image: {file.src} -> {file.dst}")
+        else:
+            print(f"[watchdog - Result] Error moving image: {file.src} -> {file.dst}")
+
+def add_file(src: Path, type: str, mtime: datetime, dst: Optional[Path] = None):
+    src = src.resolve()
+    dst = dst.resolve() if dst else None
+    with condition:
+        if src.name in waitting_list:
+            for file in waitting_list[src.name]:
+                if file.change_type(type, src, mtime):
+                    break
             else:
-                print(f"[watchdog] Error creating image: {path}")
-        except Exception as e:
-            print(f'[watchdog] Error during creation: {e}')
+                file = ChangedFile(src, type, mtime, dst)
+                waitting_list[src.name].append(file)
+        else:
+            file = ChangedFile(src, type, mtime, dst)
+            waitting_list.setdefault(src.name, []).append(file)
 
-    with dict_lock:
-        _ = created_files.pop(path)
-        _ = may_moved_files.pop(path, None)
+        condition.notify()  # Wake up the processor thread
 
-
-def move(path: str, mtime: float):
-    file  = Path(path)
-    with dict_lock:
-        previous_path = moved_files.get(path, None)
-
-    if previous_path is None:
-        print("[watchdog] move error: no previous_path", path)
-        return
-    
-    if move_image_path(Path(previous_path), file, True):
-        print(f"[watchdog] Move image: {previous_path} -> {path}")
-    else:
-        print(f"[watchdog] Error moving image: {previous_path} -> {path}")
-
-    with dict_lock:
-        _ = moved_files.pop(path)
-    
-    
-def update(path: str, mtime: float):
-    file  = Path(path)
-    with dict_lock:
-        modify = modified_files.get(path, None) is not None
-
-    if modify == False:
-        print("[watchdog] modify error", path)
-        return
-    
-    with Session(engine) as session:
-        try:
-            if inesrt_or_update_image(path, session) is not None:
-                print(f"[watchdog] Update image: {path}")
-        except Exception as e:
-            print(f'[watchdog] Error to update: {e}')
-    with dict_lock:
-        _ = modified_files.pop(path)
-
-def delete(path: str, mtime: float):
-    file  = Path(path)
-    with dict_lock:
-        _, mtime = deleted_files.get(file.name, (None, None))
-
-    if mtime is None:
-        # file is already processed
-        # Move: [delete -> create]
-        print("[watchdog] delete ignore", path)
-        return
-    
-    if delete_image(file):
-        print(f"[watchdog] File deleted: {path}")
-    else:
-        print(f"[watchdog] Error deleting file: {path}")
-
-    with dict_lock:
-        _ = deleted_files.pop(file.name)
-
+def process_waitting_list():
+    global run_thread
+    while run_thread:
+        name = None
+        file = None
+        with condition:
+            while len(waitting_list) == 0:
+                condition.wait()  # Sleep until notified
+                if not run_thread:
+                    return
+            
+            found = False
+            for name, files in waitting_list.items():
+                if len(files) == 0:
+                    continue
+                for i, file in enumerate(files):
+                    if file.time + DELAY < time.time():
+                        found = True
+                        break
+                if found:
+                    break
+            else:
+                continue
+        
+        process_file(file)
+        
+        with list_lock:
+            waitting_list[name].remove(file)
+            if len(waitting_list[name]) == 0:
+                waitting_list.pop(name)
+ 
 class ImageChangeHandler(FileSystemEventHandler):
     def __init__(self):
         super().__init__()
@@ -149,23 +237,9 @@ class ImageChangeHandler(FileSystemEventHandler):
         print(f"[watchdog - Detected] File created: {event.src_path}")
 
         file_path = file.as_posix()
-        mtime = file.stat().st_mtime
+        mtime = datetime.fromtimestamp(file.stat().st_mtime)
         
-        with dict_lock:
-            dfile_path, dmtime = deleted_files.get(file.name, (None, None))
-            if dfile_path is not None and datetime.fromtimestamp(mtime) == dmtime:
-                moved_files[file_path] = dfile_path
-                deleted_files.pop(file.name)
-                is_move = True
-            else:
-                created_files[file_path] = mtime
-                may_moved_files[file.name] = (file_path, mtime)
-                is_move = False
-        
-        if is_move:
-            threading.Timer(DELAY_TIME*5, move, args=(file_path, file.stat().st_mtime)).start()
-        else:
-            threading.Timer(DELAY_TIME*2, create, args=(file_path, file.stat().st_mtime)).start()
+        add_file(file, FileChangeType.CREATED, mtime)
 
     def on_modified(self, event):
         file  = Path(event.src_path).resolve()
@@ -176,21 +250,13 @@ class ImageChangeHandler(FileSystemEventHandler):
         print("[watchdog - Detected] File modified:", event.src_path)
 
         file_path = file.as_posix()
-        mtime = file.stat().st_mtime
+        mtime = datetime.fromtimestamp(file.stat().st_mtime)
 
         if only_update_metadata(file):
             print("[watchdog] Modify ignore: ", event.src_path)
             return
     
-        with dict_lock:
-            if file_path in modified_files or file_path in moved_files or file_path in created_files:
-                # file is processing
-                print("[watchdog] Modify ignore: ", event.src_path)
-                return
-            
-            modified_files[file_path] = mtime
-        
-        threading.Timer(DELAY_TIME, update, args=(file_path, mtime)).start()
+        add_file(file, FileChangeType.MODIFIED, mtime)
 
     def on_deleted(self, event):
         file = Path(event.src_path).resolve()
@@ -208,25 +274,7 @@ class ImageChangeHandler(FileSystemEventHandler):
         
         mtime = image.last_modified
 
-        is_move = False
-        is_delete = False
-        with dict_lock:
-            cfile_path, cmtime = may_moved_files.get(file.name, (None, None))
-            if cmtime is not None and datetime.fromtimestamp(cmtime) == mtime:
-                moved_files[cfile_path] = file_path
-                is_move = True
-                may_moved_files.pop(file.name)
-                created_files.pop(cfile_path, None)
-            elif file.name not in deleted_files:
-                is_delete = True
-                deleted_files[file.name] = (file_path, mtime)
-            else:
-                print("[watchdog] delete error", file_path)
-
-        if is_move:
-            threading.Timer(DELAY_TIME, move, args=(cfile_path, cmtime)).start()
-        elif is_delete:
-            threading.Timer(DELAY_TIME*4, delete, args=(file_path, mtime)).start()
+        add_file(file, FileChangeType.DELETED, mtime)
 
     def on_moved(self, event):
         # it is rename
@@ -242,19 +290,14 @@ class ImageChangeHandler(FileSystemEventHandler):
         is_update = not is_image(src) 
 
         file_path = dst.as_posix()
-        mtime = dst.stat().st_mtime
+        mtime = datetime.fromtimestamp(dst.stat().st_mtime)
 
         
         if is_rename:
-            with dict_lock:
-                moved_files[file_path] = src.as_posix()
-            threading.Timer(DELAY_TIME, move, args=(file_path, mtime)).start()
+            add_file(src, FileChangeType.MOVED, mtime, dst)
 
         elif is_update:
-            with dict_lock:
-                modified_files[file_path] = mtime
-        
-            threading.Timer(DELAY_TIME, update, args=(file_path, mtime)).start()
+            add_file(dst, FileChangeType.MODIFIED, mtime, None)
         else:
             print(f"[watchdog] move error")
 
@@ -263,7 +306,7 @@ class WatchdogService:
         self.observer = Observer()
         self.handler = ImageChangeHandler()
         self.watches = {}
-    
+        self.processor_thread = threading.Thread(target=process_waitting_list, daemon=True)
     def add(self, path: Path):
 
         path = path.resolve()
@@ -295,14 +338,21 @@ class WatchdogService:
 
 
     def start(self):
+        global run_thread
         paths = get_all_listening_paths()
         print(f"[watchdog] Starting...")
         for path in paths:
             self.add(Path(path))
-        
+        run_thread = True
+        self.processor_thread.start()
         self.observer.start()
 
     def stop(self):
+        global run_thread
         print(f"[watchdog] Stopping...")
+        with condition:
+            run_thread = False
+            condition.notify()
+        self.processor_thread.join()
         self.observer.stop()
         self.observer.join()
