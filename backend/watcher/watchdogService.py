@@ -143,15 +143,18 @@ class ChangedFile:
 def process_file(file: ChangedFile):
     print(f"[watchdog - Processing] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
     file_path = file.src.as_posix()
-    if file.type == FileChangeType.CREATED:
+    if file.type == FileChangeType.CREATED or file.type == FileChangeType.MODIFIED:
         with Session(engine) as session:
             try:
                 if inesrt_or_update_image(file_path, session) is not None:
-                    print(f"[watchdog - Result] Create image: {file_path}")
+                    print(f"[watchdog - Result] {file.type} image: {file_path}")
                 else:
-                    print(f"[watchdog - Result] Error creating image: {file_path}")
+                    if file.type == FileChangeType.MODIFIED:
+                        print("[watchdog - Result] Modify ignore: ", file_path)
+                    else:
+                        print(f"[watchdog - Result] Error {file.type} image: {file_path}")
             except Exception as e:
-                print(f'[watchdog - Result] Error during creation: {e}')
+                print(f'[watchdog - Result] Error during {file.type}: {e}')
 
     elif file.type == FileChangeType.DELETED:
         if delete_image(file.src):
@@ -159,18 +162,8 @@ def process_file(file: ChangedFile):
         else:
             print(f"[watchdog - Result] Error deleting file: {file_path}")
 
-    elif file.type == FileChangeType.MODIFIED:
-        with Session(engine) as session:
-            try:
-                if inesrt_or_update_image(file_path, session) is not None:
-                    print(f"[watchdog - Result] Update image: {file_path}")
-                else:
-                    print("[watchdog] Modify ignore: ", file_path)
-            except Exception as e:
-                print(f'[watchdog - Result] Error to update: {e}')
-
     elif file.type == FileChangeType.MOVED:
-        if move_image_path(file.src, file.dst, True):
+        if move_image_path(file.src, file.dst, False):
             print(f"[watchdog - Result] Move image: {file.src} -> {file.dst}")
         else:
             print(f"[watchdog - Result] Error moving image: {file.src} -> {file.dst}")
@@ -203,25 +196,22 @@ def process_waitting_list():
                 if not run_thread:
                     return
             
-            found = False
-            for name, files in waitting_list.items():
-                if len(files) == 0:
-                    continue
+            for name, files in list(waitting_list.items()):
+                # Find the first eligible file
                 for i, file in enumerate(files):
                     if file.time + DELAY < time.time():
-                        found = True
-                        break
-                if found:
-                    break
+                        waitting_list[name].pop(i)
+                        break  # Breaks the inner loop
+                else:
+                    continue  # Continue if inner loop did not break
+                break  # Breaks the outer loop if a file was removed
             else:
+                # If no file was found, continue to the next iteration
                 continue
-        
+
         process_file(file)
         
-        with list_lock:
-            waitting_list[name].remove(file)
-            if len(waitting_list[name]) == 0:
-                waitting_list.pop(name)
+        
  
 class ImageChangeHandler(FileSystemEventHandler):
     def __init__(self):
@@ -236,7 +226,6 @@ class ImageChangeHandler(FileSystemEventHandler):
         
         print(f"[watchdog - Detected] File created: {event.src_path}")
 
-        file_path = file.as_posix()
         mtime = datetime.fromtimestamp(file.stat().st_mtime)
         
         add_file(file, FileChangeType.CREATED, mtime)
@@ -249,7 +238,6 @@ class ImageChangeHandler(FileSystemEventHandler):
         
         print("[watchdog - Detected] File modified:", event.src_path)
 
-        file_path = file.as_posix()
         mtime = datetime.fromtimestamp(file.stat().st_mtime)
 
         if only_update_metadata(file):
@@ -265,8 +253,6 @@ class ImageChangeHandler(FileSystemEventHandler):
             return
         
         print(f"[watchdog - Detected] File deleted: {event.src_path}")
-
-        file_path = file.as_posix()
 
         image = query_images_by_path(file)
         if image is None:
@@ -289,7 +275,6 @@ class ImageChangeHandler(FileSystemEventHandler):
         # rename from temproal file, take the same action as modify
         is_update = not is_image(src) 
 
-        file_path = dst.as_posix()
         mtime = datetime.fromtimestamp(dst.stat().st_mtime)
 
         
@@ -335,7 +320,6 @@ class WatchdogService:
         self.observer.unschedule(watch)
 
         return True
-
 
     def start(self):
         global run_thread
