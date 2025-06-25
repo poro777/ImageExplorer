@@ -367,7 +367,33 @@ def insert_json_data(file_path: str = "data.json"):
         print(k)
         requests.post('http://127.0.0.1:5000/insert', data = {FIELD_ID : k})
 
+def change_partition(id: int, new_partition: str):
+    '''
+    change partition of a given id
+    '''
+    
 
+    try:
+        client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+        image = client.get(
+            collection_name=COLLECTION_NAME,
+            ids=id,
+            output_fields=[FIELD_ID, FIELD_TEXT, FIELD_TEXT_DENSE, FIELD_IMAGE_DENSE]
+        )[0]
+        client.close()
+        
+        if delete_one(COLLECTION_NAME, id) == False:
+            print(f"Error deleting image {id}  during partition change")
+            return False
+        
+        if insert_one(COLLECTION_NAME, new_partition, id, image[FIELD_TEXT], image[FIELD_TEXT_DENSE], image[FIELD_IMAGE_DENSE]) == False:
+            print(f"Error inserting image {id} to partition {new_partition} during partition change")
+            return False
+        
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
 
 def insert_image(id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:

@@ -179,3 +179,61 @@ def get_images_by_folder(path: str, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Directory not found")
     
     return directory.images
+
+
+def move_image_path(current: Path, new: Path, replace = False):
+    '''move image from current path to new path
+        input absolute path
+    '''
+    
+    with Session(database.engine) as session:
+        curr_path = current.parent.as_posix()
+        curr_name = current.name
+        
+        new_path = new.parent.as_posix()
+        new_name = new.name
+
+        
+
+        image = session.exec(select(Image).where(Image.full_path == current.as_posix())).first()
+
+        if image is None:
+            print(f"Error moving image: file {current.as_posix()} not found in database.")
+            return False
+
+        target_image = session.exec(select(Image).where(Image.full_path == new.as_posix())).first()
+
+        # Make sure the file names are the same
+        replace = replace and curr_name == new_name
+        if target_image is not None and replace == False:
+            print(f"Error moving image: file {new.as_posix()} already exists.")
+            return False
+
+        try:
+            if target_image is not None:
+                session.delete(target_image)
+
+            new_dorectory = session.exec(select(Directory).where(Directory.path == new_path)).first()
+            if not new_dorectory:
+                new_dorectory = Directory(path=new_path, is_watching=False)
+                session.add(new_dorectory)
+                session.flush()
+
+            image.directory_id = new_dorectory.id
+            image.filename = new_name
+            image.full_path = new.as_posix()
+            
+            session.commit()
+        except Exception as e:
+            print(f"Error moving image: {e}")
+            session.rollback()
+            return False
+        
+        if indexer.change_partition(image.id, str(new_dorectory.id)) == False:
+            print(f"Error moving image: {new.as_posix()} in vector db")
+            return False
+
+        return True
+
+
+
