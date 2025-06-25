@@ -2,7 +2,7 @@
 from datetime import datetime
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from sqlmodel import Session
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -15,13 +15,23 @@ from router.file_api import getPathOfImageFile, getFolderPath, ALLOWED_EXTENSION
 from router.sqlite_api import inesrt_or_update_image, delete_image
 from database.utils import move_image_path, get_all_listening_paths, query_images_by_path
 
+class ListItem:
+    def __init__(self):
+        self.is_processing = False
+        self.files = []
+    def __repr__(self):
+        return f"ListItem(is_processing={self.is_processing}, files={self.files})"
+    
+
 dict_lock = threading.Lock()
 run_thread = False
-
 list_lock = threading.Lock()
-waitting_list: Dict[str, List] = dict()
+# {file base: items}
+waitting_list: Dict[str, ListItem] = dict()
 condition = threading.Condition(lock=list_lock)
 DELAY = 1
+
+last_add_time = 0
 
 def is_file_ready(path, timeout=2):
     """Wait until file size is stable (not changing)."""
@@ -136,80 +146,92 @@ class ChangedFile:
     
     def __repr__(self):
         return f"ChangedFile(src={self.src}, change_type={self.type}, dst={self.dst})"
-    
 
-
-
-def process_file(file: ChangedFile):
-    print(f"[watchdog - Processing] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
+def process_file(file: ChangedFile, id):
+    print(f"[watchdog - Processing - {id}] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
     file_path = file.src.as_posix()
     if file.type == FileChangeType.CREATED or file.type == FileChangeType.MODIFIED:
         with Session(engine) as session:
             try:
                 if inesrt_or_update_image(file_path, session) is not None:
-                    print(f"[watchdog - Result] {file.type} image: {file_path}")
+                    print(f"[watchdog - Result - {id}] {file.type} image: {file_path}")
                 else:
                     if file.type == FileChangeType.MODIFIED:
-                        print("[watchdog - Result] Modify ignore: ", file_path)
+                        print(f"[watchdog - Result - {id}] Modify ignore: ", file_path)
                     else:
-                        print(f"[watchdog - Result] Error {file.type} image: {file_path}")
+                        print(f"[watchdog - Result - {id}] Error {file.type} image: {file_path}")
             except Exception as e:
-                print(f'[watchdog - Result] Error during {file.type}: {e}')
+                print(f'[watchdog - Result - {id}] Error during {file.type}: {e}')
 
     elif file.type == FileChangeType.DELETED:
         if delete_image(file.src):
-            print(f"[watchdog - Result] File deleted: {file_path}")
+            print(f"[watchdog - Result - {id}] File deleted: {file_path}")
         else:
-            print(f"[watchdog - Result] Error deleting file: {file_path}")
+            print(f"[watchdog - Result - {id}] Error deleting file: {file_path}")
 
     elif file.type == FileChangeType.MOVED:
         if move_image_path(file.src, file.dst, False):
-            print(f"[watchdog - Result] Move image: {file.src} -> {file.dst}")
+            print(f"[watchdog - Result - {id}] Move image: {file.src} -> {file.dst}")
         else:
-            print(f"[watchdog - Result] Error moving image: {file.src} -> {file.dst}")
+            print(f"[watchdog - Result - {id}] Error moving image: {file.src} -> {file.dst}")
 
 def add_file(src: Path, type: str, mtime: datetime, dst: Optional[Path] = None):
+    global last_add_time
     src = src.resolve()
     dst = dst.resolve() if dst else None
     with condition:
         if src.name in waitting_list:
-            for file in waitting_list[src.name]:
+            for file in waitting_list[src.name].files:
                 if file.change_type(type, src, mtime):
                     break
             else:
                 file = ChangedFile(src, type, mtime, dst)
-                waitting_list[src.name].append(file)
+                waitting_list[src.name].files.append(file)
         else:
             file = ChangedFile(src, type, mtime, dst)
-            waitting_list.setdefault(src.name, []).append(file)
+            waitting_list.setdefault(src.name, ListItem()).files.append(file)
 
+        last_add_time = time.time()
         condition.notify()  # Wake up the processor thread
 
-def process_waitting_list():
-    global run_thread
+def process_waitting_list(id):
+    global run_thread, last_add_time
     while run_thread:
-        name = None
-        file = None
+        item = None
+
         with condition:
             while len(waitting_list) == 0:
                 condition.wait()  # Sleep until notified
                 if not run_thread:
                     return
+                print(f"[watchdog - Thread {id}] Woke up at time {datetime.fromtimestamp(time.time())}")
+
+            if last_add_time + DELAY > time.time(): # wait for all files change are done
+                continue
             
-            for name, files in list(waitting_list.items()):
-                # Find the first eligible file
-                for i, file in enumerate(files):
-                    if file.time + DELAY < time.time():
-                        waitting_list[name].pop(i)
-                        break  # Breaks the inner loop
-                else:
-                    continue  # Continue if inner loop did not break
-                break  # Breaks the outer loop if a file was removed
+            for name, item in list(waitting_list.items()):
+                if item.is_processing:
+                    continue
+                
+                if len(item.files) != 0: 
+                    item.is_processing = True # lock the processing flag
+                    break
+
             else:
                 # If no file was found, continue to the next iteration
                 continue
+        
+        while True: # process the files in the list until the list is empty
+            with list_lock:
+                file = item.files.pop(0)
 
-        process_file(file)
+            process_file(file, id)
+            
+            with list_lock:
+                if len(item.files) == 0:
+                    item.is_processing = False # unlock the processing flag
+                    break
+            
         
         
  
@@ -291,7 +313,10 @@ class WatchdogService:
         self.observer = Observer()
         self.handler = ImageChangeHandler()
         self.watches = {}
-        self.processor_thread = threading.Thread(target=process_waitting_list, daemon=True)
+        self.process_threads = []
+        self.N = 3
+        for i in range(self.N):
+            self.process_threads.append(threading.Thread(target=process_waitting_list, args=(i,), daemon=True))
     def add(self, path: Path):
 
         path = path.resolve()
@@ -328,15 +353,20 @@ class WatchdogService:
         for path in paths:
             self.add(Path(path))
         run_thread = True
-        self.processor_thread.start()
+        for process_thread in self.process_threads:
+            process_thread.start()
         self.observer.start()
 
     def stop(self):
         global run_thread
         print(f"[watchdog] Stopping...")
-        with condition:
-            run_thread = False
-            condition.notify()
-        self.processor_thread.join()
+        while True:
+            with condition:
+                run_thread = False
+                condition.notify(self.N)
+            for process_thread in self.process_threads:
+                process_thread.join()
+            if not any(thread.is_alive() for thread in self.process_threads):
+                break
         self.observer.stop()
         self.observer.join()

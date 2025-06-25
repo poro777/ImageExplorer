@@ -83,13 +83,9 @@ def inesrt_or_update_image(file: str, session: Session):
         image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
 
     try:
-        session.flush()
-        if indexer.insert_image(image.id, name, pil_image, image.directory_id) == False:
-            raise Exception("Cannot insert image to vector db")
-
         session.commit()
-        
         session.refresh(image)
+
     except Exception as e:
         session.rollback()
         raise HTTPException(
@@ -97,6 +93,13 @@ def inesrt_or_update_image(file: str, session: Session):
             detail=f"Cannot insert image: {e}"
         )
     
+    if indexer.insert_image(image.id, name, pil_image, image.directory_id) == False:
+        session.delete(image)
+        session.commit()
+        raise HTTPException(
+            status_code=500,
+            detail="Vector db insert failed"
+        )
     return image
 
 
@@ -106,19 +109,27 @@ def create_image(file: str, session: Session = Depends(get_session)):
 
 
 def delete_image(file: Path):
+    id = None
     with Session(database.engine) as session:
         image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
 
         if image is None:
             return False
-
+        id = image.id
         successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
         if successed == False:
             return False
-        session.delete(image)
-        session.commit()
+        
+    with Session(database.engine) as session:
+        try:
+            image = session.get(Image, id)
+            session.delete(image)
+            session.commit()
 
-        return True
+            return True
+        except Exception as e:
+            print(f"Error deleting image: {e}")
+            return False
 
 # DELETE /images/{image_id}
 @router.delete("/{image_id}")

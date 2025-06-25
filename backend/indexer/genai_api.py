@@ -58,7 +58,7 @@ def sanitize_string(s):
     return s
 
 def explainImage(id:str, image_format, image_data: BytesIO):
-    global last_explanation_time
+    global last_explanation_time, explain_image_lock, COOLDOWN_PERIOD, USE_CACHE_TEXT, CACHE_TEXT
 
     if USE_CACHE_TEXT and (id in CACHE_TEXT):
         return CACHE_TEXT[id]

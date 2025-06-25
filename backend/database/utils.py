@@ -57,6 +57,7 @@ def move_image_path(current: Path, new: Path, replace = False):
         image = session.exec(select(Image).where(Image.full_path == current.as_posix())).first()
 
         if image is None:
+            print(f"Error moving image: file {current.as_posix()} not found in database.")
             return False
 
         target_image = session.exec(select(Image).where(Image.full_path == new.as_posix())).first()
@@ -64,6 +65,7 @@ def move_image_path(current: Path, new: Path, replace = False):
         # Make sure the file names are the same
         replace = replace and curr_name == new_name
         if target_image is not None and replace == False:
+            print(f"Error moving image: file {new.as_posix()} already exists.")
             return False
 
         try:
@@ -82,6 +84,7 @@ def move_image_path(current: Path, new: Path, replace = False):
             
             session.commit()
         except Exception as e:
+            print(f"Error moving image: {e}")
             session.rollback()
             return False
         
