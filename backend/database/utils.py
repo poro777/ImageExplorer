@@ -1,12 +1,8 @@
-from datetime import datetime
 from typing import List
 from database.database import engine
 from sqlmodel import Session, select
 from database.models import Directory, Image
 from pathlib import Path
-from router.file_api import getPathOfImageFile
-
-
 
 def get_directory_id(path: str) -> int | None:
     with Session(engine) as session:

@@ -2,7 +2,7 @@
 from datetime import datetime
 import os
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 from sqlmodel import Session
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -11,7 +11,7 @@ import threading
 
 from database.database import engine
 
-from router.file_api import getPathOfImageFile, getFolderPath, ALLOWED_EXTENSIONS
+from router.file_api import ALLOWED_EXTENSIONS
 from router.sqlite_api import inesrt_or_update_image, delete_image, move_image_path
 from database.utils import get_all_listening_paths, query_images_by_path
 

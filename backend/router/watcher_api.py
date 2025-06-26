@@ -1,16 +1,11 @@
-import os
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
 from pathlib import Path
 from fastapi import Depends
 from sqlmodel import Session, delete, select, text
-from database import models
-from typing import List, Optional, Union
+from typing import List
 from PIL import Image as ImageLoader
 from database.models import Image, Directory
 from database.database import get_session, engine
-from database import database
-from sqlalchemy.exc import IntegrityError
 
 import indexer
 
@@ -44,9 +39,10 @@ def add_path_to_listener(path: str, session: Session = Depends(get_session)):
         directory.last_modified = datetime.fromtimestamp(path.stat().st_mtime)
         session.commit()
     
-    files = []
+    images = []
     for file in path.iterdir():
-        if file.is_file() and file.suffix.lower() in ALLOWED_EXTENSIONS:
+        file = getPathOfImageFile(file)
+        if file is not None:
             name = file.name
 
             image = session.exec(select(Image).where(
@@ -71,35 +67,21 @@ def add_path_to_listener(path: str, session: Session = Depends(get_session)):
                                 last_modified=datetime.fromtimestamp(file.stat().st_mtime),
                                 full_path=file.resolve().as_posix())
                     session.add(image)
+
+                session.commit()
+                session.refresh(image)
+                if indexer.insert_image(indexer.COLLECTION_NAME, image.id, name, pil_image, image.directory_id) == False:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Cannot insert image to vector db."
+                    )
+                
+                images.append(image.model_dump())
+
             except Exception as e:
                 print(e)
                 continue
             
-            files.append((image, name, pil_image))
-
-    try:
-        session.flush()
-        for image, name, pil_image in files:
-            if indexer.insert_image(image.id, name, pil_image, image.directory_id) == False:
-                session.rollback()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot insert image to vector db."
-                )
-
-        session.commit()
-        
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot insert image: {e}"
-        )
-    
-    images = []
-    for image, _, _ in files:
-        session.refresh(image)
-        images.append(image)
 
     fs_watcher.add(path)
     return images

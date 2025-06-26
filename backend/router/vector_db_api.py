@@ -1,18 +1,12 @@
-import os
 from typing import Optional
-
-from io import BytesIO
-
 import indexer
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from sqlmodel import Session
 from database.database import engine
 import indexer.vector_db
 from router.file_api import getFolderPath
 from database.utils import get_directory_id, query_images_by_id_list
-from database.models import Image, Directory
+from database.models import Image
 
 
 router = APIRouter(
@@ -33,7 +27,7 @@ def query_text(text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed:
         # given path is not found
         raise HTTPException(status_code=404, detail="Path is not in database")
     
-    results = indexer.query_images_by_text(top_k, text, use_text_embed, use_bm25, use_joint_embed, partition_id )
+    results = indexer.query_images_by_text(indexer.COLLECTION_NAME, top_k, text, use_text_embed, use_bm25, use_joint_embed, partition_id )
     images = query_images_by_id_list([result[indexer.vector_db.FIELD_ID] for result in results])
 
     distances = {result[indexer.vector_db.FIELD_ID]: result["distance"] for result in results}

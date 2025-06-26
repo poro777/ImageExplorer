@@ -367,7 +367,7 @@ def insert_json_data(file_path: str = "data.json"):
         print(k)
         requests.post('http://127.0.0.1:5000/insert', data = {FIELD_ID : k})
 
-def change_partition(id: int, new_partition: str):
+def change_partition(collection: str, id: int, new_partition: str):
     '''
     change partition of a given id
     '''
@@ -376,17 +376,17 @@ def change_partition(id: int, new_partition: str):
     try:
         client = MilvusClient(uri=milvus_uri, token=milvus_token)  
         image = client.get(
-            collection_name=COLLECTION_NAME,
+            collection_name=collection,
             ids=id,
             output_fields=[FIELD_ID, FIELD_TEXT, FIELD_TEXT_DENSE, FIELD_IMAGE_DENSE]
         )[0]
         client.close()
         
-        if delete_one(COLLECTION_NAME, id) == False:
+        if delete_one(collection, id) == False:
             print(f"Error deleting image {id}  during partition change")
             return False
         
-        if insert_one(COLLECTION_NAME, new_partition, id, image[FIELD_TEXT], image[FIELD_TEXT_DENSE], image[FIELD_IMAGE_DENSE]) == False:
+        if insert_one(collection, new_partition, id, image[FIELD_TEXT], image[FIELD_TEXT_DENSE], image[FIELD_IMAGE_DENSE]) == False:
             print(f"Error inserting image {id} to partition {new_partition} during partition change")
             return False
         
@@ -396,7 +396,7 @@ def change_partition(id: int, new_partition: str):
         return False
 
 
-def insert_image(id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:
+def insert_image(collection: str, id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:
     image_format = image.format.lower()
 
     # Convert to BytesIO
@@ -409,10 +409,10 @@ def insert_image(id: int, filename:str, image: ImageFile, partition_id: Optional
     image_features = clip_embed.get_image_embed(image)
 
     partition = str(partition_id) if partition_id is not None else "_default"
-    successed = insert_one(COLLECTION_NAME, partition, id, text, text_features, image_features)
+    successed = insert_one(collection, partition, id, text, text_features, image_features)
     return successed
 
-def query_images_by_text(top_k:int, text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed: bool, partition_id: Optional[int] = None):
+def query_images_by_text(collection: str, top_k:int, text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed: bool, partition_id: Optional[int] = None):
     '''return [{"id":int, "distance":float}, ...]'''
     clip_text_features = clip_embed.get_text_embed(text)
     text_features = text_embed.get_text_embed_query(text)
@@ -421,7 +421,7 @@ def query_images_by_text(top_k:int, text: str, use_text_embed: bool, use_bm25: b
     top_k = 10
 
     partitions = [str(partition_id)] if partition_id is not None else None
-    results = query(COLLECTION_NAME, partitions, top_k, text, text_features, clip_text_features, clip_image_features, 
+    results = query(collection, partitions, top_k, text, text_features, clip_text_features, clip_image_features, 
                                 use_text_embed, use_bm25, use_joint_embed, use_image_embed )
 
     return results

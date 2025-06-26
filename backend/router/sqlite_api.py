@@ -1,16 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
 from pathlib import Path
 from fastapi import Depends
 from sqlmodel import Session, select, text
-from database import models
-from typing import List, Optional, Union
+from typing import List, Optional
 from PIL import Image as ImageLoader
 from PIL.ImageFile import ImageFile
 from database.models import Image, Directory
 from database.database import get_session
 from database import database
-from sqlalchemy.exc import IntegrityError
 
 import indexer
 
@@ -93,9 +90,7 @@ def inesrt_or_update_image(file: str, session: Session):
             detail=f"Cannot insert image: {e}"
         )
     
-    if indexer.insert_image(image.id, name, pil_image, image.directory_id) == False:
-        session.delete(image)
-        session.commit()
+    if indexer.insert_image(indexer.COLLECTION_NAME, image.id, name, pil_image, image.directory_id) == False:
         raise HTTPException(
             status_code=500,
             detail="Vector db insert failed"
@@ -229,7 +224,7 @@ def move_image_path(current: Path, new: Path, replace = False):
             session.rollback()
             return False
         
-        if indexer.change_partition(image.id, str(new_dorectory.id)) == False:
+        if indexer.change_partition(indexer.COLLECTION_NAME, image.id, str(new_dorectory.id)) == False:
             print(f"Error moving image: {new.as_posix()} in vector db")
             return False
 
