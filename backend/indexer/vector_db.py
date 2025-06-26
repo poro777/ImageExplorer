@@ -36,34 +36,44 @@ FIELD_IMAGE_DENSE = "image_dense" # clip embedding
 FIELD_CN_TEXT = "cn_text" # raw text for chinese analyzer
 FIELD_CN_TEXT_SPARSE = "cn_text_sparse" # BM 25
 
-
+def getClient():
+    """
+    Get a Milvus client instance.
+    """
+    return MilvusClient(uri=milvus_uri, token=milvus_token)
 
 def is_collection_exist(collection: str):
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
-    return client.has_collection(collection_name=collection)
+    client = getClient()
+    result = client.has_collection(collection_name=collection)
+    client.close()
+    return result
 
 def is_partition_exist(collection:str, partition_name: str):
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)
+    client = getClient()
 
-    return client.has_partition(
+    result = client.has_partition(
         collection_name=collection,
         partition_name=partition_name
     )
+
+    client.close()
+    return result
     
 def create_partition(collection:str,  new_partition_name: str):
     if is_partition_exist(collection, new_partition_name):
         return
     
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)
+    client = getClient()
 
     client.create_partition(
         collection_name = collection,
         partition_name = new_partition_name
     )
 
+    client.close()
 
 def create_embed_db(collection: str):
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+    client = getClient()
 
     schema = MilvusClient.create_schema(auto_id=False)
 
@@ -157,8 +167,10 @@ def create_embed_db(collection: str):
         index_params=index_params
     )
 
+    client.close()
+
 def delete_empty_data(collection: str):
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+    client = getClient()
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
 
     # Step 2: Load the collection
@@ -191,8 +203,7 @@ def query(collection: str, partitions:Optional[List[str]] ,top_k:int = 10, query
     - use_joint_embed : given clip text embedding query image embedding in dataset
     - use_image_embed : given image embedding query image embedding in dataset
     '''
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
-    
+
     reqs = []
     weight = []
 
@@ -253,7 +264,8 @@ def query(collection: str, partitions:Optional[List[str]] ,top_k:int = 10, query
 
     if len(reqs) == 0:
         return []
-
+    client = getClient()
+    
     ranker = RRFRanker(60)
     res = client.hybrid_search(
         collection_name=collection,
@@ -264,16 +276,15 @@ def query(collection: str, partitions:Optional[List[str]] ,top_k:int = 10, query
         limit=top_k
     )[0]
 
+    client.close()
     return [{FIELD_ID: hit[FIELD_ID], "distance": hit["distance"]} 
             for hit in res]
 
 def insert_one(collection: str, partition:str, id = None, text= None, text_dense= None, image_dense= None) -> bool:
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+    
 
     if is_partition_exist(collection, partition) == False:
         create_partition(collection, partition)
-
-
 
     if id is None:
         return False
@@ -294,28 +305,38 @@ def insert_one(collection: str, partition:str, id = None, text= None, text_dense
         }
     ]
 
+    client = getClient() 
     try:
+        
         res = client.upsert(
             collection_name=collection,
             partition_name=partition,
             data=data
         )
+        client.close()
         return True
     except Exception as e:
         print(e)
+        client.close()
         return False
 
 def delete_by_list(collection: str, ids: List[int]):
-    client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+    
+    if len(ids) == 0:
+        return True
+    
+    client = getClient()
 
     try:
         res = client.delete(
             collection_name=collection,
             ids=ids
         )
+        client.close()
         return True
     except Exception as e:
         print(e)
+        client.close()
         return False
 
 def delete_one(collection: str, id):
@@ -323,18 +344,17 @@ def delete_one(collection: str, id):
 
     
 def list_data(collection: str, partitions: Optional[List[str]] = None):
-    connections.connect(alias="default", host=milvus_host, port=mulvus_port)
+    client = getClient()
 
-    collection:Collection = Collection(collection)
-    collection.load()
-
-    results = collection.query(
-        expr="",  # empty expr returns all data
+    results = client.query(
+        collection_name=collection,  # empty expr returns all data
+        filter="",  # empty expr returns all data
         output_fields=[FIELD_ID, FIELD_TEXT],  # list all text fields you want to extract
         limit=100,
         partition_names=partitions
     )
 
+    client.close()
     return [ {FIELD_ID: tag[FIELD_ID],FIELD_TEXT: tag[FIELD_TEXT]} 
             for tag in results]
 
@@ -371,17 +391,17 @@ def change_partition(collection: str, id: int, new_partition: str):
     '''
     change partition of a given id
     '''
-    
+    client = getClient()
 
     try:
-        client = MilvusClient(uri=milvus_uri, token=milvus_token)  
+        
         image = client.get(
             collection_name=collection,
             ids=id,
             output_fields=[FIELD_ID, FIELD_TEXT, FIELD_TEXT_DENSE, FIELD_IMAGE_DENSE]
         )[0]
+
         client.close()
-        
         if delete_one(collection, id) == False:
             print(f"Error deleting image {id}  during partition change")
             return False
@@ -393,6 +413,7 @@ def change_partition(collection: str, id: int, new_partition: str):
         return True
     except Exception as e:
         print(e)
+        client.close()
         return False
 
 
