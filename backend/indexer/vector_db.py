@@ -439,7 +439,6 @@ def query_images_by_text(collection: str, top_k:int, text: str, use_text_embed: 
     text_features = text_embed.get_text_embed_query(text)
     use_image_embed = False
     clip_image_features = None
-    top_k = 10
 
     partitions = [str(partition_id)] if partition_id is not None else None
     results = query(collection, partitions, top_k, text, text_features, clip_text_features, clip_image_features, 

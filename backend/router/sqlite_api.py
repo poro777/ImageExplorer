@@ -31,8 +31,19 @@ def read_images(session: Session = Depends(get_session)):
 def delete_all_images(session: Session = Depends(get_session)):
     session.exec(text("DELETE FROM image"))  # or session.query(Image).delete()
     session.commit()
-    # override a new vector db
-    indexer.create_embed_db(indexer.COLLECTION_NAME)
+    
+    # Delete all images from vector db
+    while True:
+        ids = [data[indexer.FIELD_ID] for data in indexer.list_data(indexer.COLLECTION_NAME)]
+        if len(ids) == 0:
+            break
+        delete = indexer.delete_by_list(indexer.COLLECTION_NAME, ids)
+        if delete == False:
+            raise HTTPException(
+                status_code=500,
+                detail="Vector db delete failed"
+            )
+    
     return {"detail": "All images deleted"}
 
 
