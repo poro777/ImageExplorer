@@ -32,6 +32,9 @@ def wait_before_read_vecdb():
 def clear_vector_db():
     """Clear the vector database for testing purposes."""
         # Clear the vector database collection before each test
+    if indexer.is_collection_exist(indexer.COLLECTION_NAME) == False:
+        indexer.create_embed_db(indexer.COLLECTION_NAME)
+
     while True:
         ids = [data[indexer.FIELD_ID] for data in indexer.list_data(indexer.COLLECTION_NAME)]
         if len(ids) == 0:
