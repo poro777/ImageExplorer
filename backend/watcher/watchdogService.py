@@ -150,8 +150,8 @@ class ChangedFile:
 def process_file(file: ChangedFile, id):
     print(f"[watchdog - Processing - {id}] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
     file_path = file.src.as_posix()
-    if file.type == FileChangeType.CREATED or file.type == FileChangeType.MODIFIED:
-        with Session(engine) as session:
+    with Session(engine) as session:
+        if file.type == FileChangeType.CREATED or file.type == FileChangeType.MODIFIED:
             try:
                 if inesrt_or_update_image(file_path, session) is not None:
                     print(f"[watchdog - Result - {id}] {file.type} image: {file_path}")
@@ -163,17 +163,17 @@ def process_file(file: ChangedFile, id):
             except Exception as e:
                 print(f'[watchdog - Result - {id}] Error during {file.type}: {e}')
 
-    elif file.type == FileChangeType.DELETED:
-        if delete_image(file.src):
-            print(f"[watchdog - Result - {id}] File deleted: {file_path}")
-        else:
-            print(f"[watchdog - Result - {id}] Error deleting file: {file_path}")
+        elif file.type == FileChangeType.DELETED:
+            if delete_image(file.src, session):
+                print(f"[watchdog - Result - {id}] File deleted: {file_path}")
+            else:
+                print(f"[watchdog - Result - {id}] Error deleting file: {file_path}")
 
-    elif file.type == FileChangeType.MOVED:
-        if move_image_path(file.src, file.dst, False):
-            print(f"[watchdog - Result - {id}] Move image: {file.src} -> {file.dst}")
-        else:
-            print(f"[watchdog - Result - {id}] Error moving image: {file.src} -> {file.dst}")
+        elif file.type == FileChangeType.MOVED:
+            if move_image_path(file.src, file.dst, False, session):
+                print(f"[watchdog - Result - {id}] Move image: {file.src} -> {file.dst}")
+            else:
+                print(f"[watchdog - Result - {id}] Error moving image: {file.src} -> {file.dst}")
 
 def add_file(src: Path, type: str, mtime: datetime, dst: Optional[Path] = None):
     global last_add_time
