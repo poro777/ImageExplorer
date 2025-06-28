@@ -5,7 +5,7 @@ from sqlmodel import Session, delete, select, text
 from typing import List
 from PIL import Image as ImageLoader
 from database.models import Image, Directory
-from database.database import get_session, engine
+from database.database import get_session
 
 import indexer
 

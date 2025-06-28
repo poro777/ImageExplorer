@@ -1,6 +1,10 @@
 import time
+
+import database.database
+import database.utils
 import indexer
-indexer.COLLECTION_NAME = "test_collection"  # Set a test collection name, before importing the app
+import watcher.watchdogService
+indexer.COLLECTION_NAME = "test_collection"
 
 
 from datetime import datetime
@@ -9,7 +13,7 @@ from fastapi.testclient import TestClient
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from database.database import get_session
+import database
 
 import indexer
 from main import app
@@ -18,6 +22,8 @@ from sqlmodel.pool import StaticPool
 from router.file_api import getPathOfImageFile, BASE_DIR
 from PIL import Image as ImageLoader
 from router.sqlite_api import inesrt_or_update_image
+
+import watcher
 
 PATH_HUSKY_IMAGE = "husky_1.jpg"
 PATH_HUSKY_IMAGE_2 = "folder/husky_2.jpg"
@@ -43,23 +49,32 @@ def clear_vector_db():
         if delete == False:
             raise RuntimeError("Failed to clear vector database collection")
 
+
 @pytest.fixture(name="session")
-def session_fixture():
-    engine = create_engine(
+def session_fixture(monkeypatch):
+    test_engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
-    SQLModel.metadata.create_all(engine)
 
-    with Session(engine) as session:
+    # Patch the global engine in your app code
+    monkeypatch.setattr(database.database, "engine", test_engine)
+    monkeypatch.setattr(database.utils, "engine", test_engine)
+    monkeypatch.setattr(watcher.watchdogService, "engine", test_engine)
+    assert database.database.engine is test_engine
+    assert database.utils.engine is test_engine
+    assert watcher.watchdogService.engine is test_engine
+
+    SQLModel.metadata.create_all(test_engine)
+
+    with Session(test_engine) as session:
         yield session
-
 
 @pytest.fixture(name="client")  
 def client_fixture(session: Session):  
     def get_session_override():  
         return session
 
-    app.dependency_overrides[get_session] = get_session_override  
+    app.dependency_overrides[database.database.get_session] = get_session_override  
 
     client = TestClient(app)  
     yield client  

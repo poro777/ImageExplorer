@@ -2,7 +2,6 @@ from typing import Optional
 import indexer
 
 from fastapi import APIRouter, HTTPException
-from database.database import engine
 import indexer.vector_db
 from router.file_api import getFolderPath
 from database.utils import get_directory_id, query_images_by_id_list

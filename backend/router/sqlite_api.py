@@ -114,28 +114,26 @@ def create_image(file: str, session: Session = Depends(get_session)):
     return inesrt_or_update_image(file, session)
 
 
-def delete_image(file: Path):
+def delete_image(file: Path, session: Session):
     id = None
-    with Session(database.engine) as session:
-        image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
+    image = session.exec(select(Image).where(Image.full_path == file.as_posix())).first()
 
-        if image is None:
-            return False
-        id = image.id
-        successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
-        if successed == False:
-            return False
+    if image is None:
+        return False
+    id = image.id
+    successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
+    if successed == False:
+        return False
         
-    with Session(database.engine) as session:
-        try:
-            image = session.get(Image, id)
-            session.delete(image)
-            session.commit()
+    try:
+        image = session.get(Image, id)
+        session.delete(image)
+        session.commit()
 
-            return True
-        except Exception as e:
-            print(f"Error deleting image: {e}")
-            return False
+        return True
+    except Exception as e:
+        print(f"Error deleting image: {e}")
+        return False
 
 # DELETE /images/{image_id}
 @router.delete("/{image_id}")
@@ -187,59 +185,58 @@ def get_images_by_folder(path: str, session: Session = Depends(get_session)):
     return directory.images
 
 
-def move_image_path(current: Path, new: Path, replace = False):
+def move_image_path(current: Path, new: Path, replace = False, session: Session = None):
     '''move image from current path to new path
         input absolute path
     '''
     
-    with Session(database.engine) as session:
-        curr_path = current.parent.as_posix()
-        curr_name = current.name
+    curr_path = current.parent.as_posix()
+    curr_name = current.name
+    
+    new_path = new.parent.as_posix()
+    new_name = new.name
+
+    
+
+    image = session.exec(select(Image).where(Image.full_path == current.as_posix())).first()
+
+    if image is None:
+        print(f"Error moving image: file {current.as_posix()} not found in database.")
+        return False
+
+    target_image = session.exec(select(Image).where(Image.full_path == new.as_posix())).first()
+
+    # Make sure the file names are the same
+    replace = replace and curr_name == new_name
+    if target_image is not None and replace == False:
+        print(f"Error moving image: file {new.as_posix()} already exists.")
+        return False
+
+    try:
+        if target_image is not None:
+            session.delete(target_image)
+
+        new_dorectory = session.exec(select(Directory).where(Directory.path == new_path)).first()
+        if not new_dorectory:
+            new_dorectory = Directory(path=new_path, is_watching=False)
+            session.add(new_dorectory)
+            session.flush()
+
+        image.directory_id = new_dorectory.id
+        image.filename = new_name
+        image.full_path = new.as_posix()
         
-        new_path = new.parent.as_posix()
-        new_name = new.name
+        session.commit()
+    except Exception as e:
+        print(f"Error moving image: {e}")
+        session.rollback()
+        return False
+    
+    if indexer.change_partition(indexer.COLLECTION_NAME, image.id, str(new_dorectory.id)) == False:
+        print(f"Error moving image: {new.as_posix()} in vector db")
+        return False
 
-        
-
-        image = session.exec(select(Image).where(Image.full_path == current.as_posix())).first()
-
-        if image is None:
-            print(f"Error moving image: file {current.as_posix()} not found in database.")
-            return False
-
-        target_image = session.exec(select(Image).where(Image.full_path == new.as_posix())).first()
-
-        # Make sure the file names are the same
-        replace = replace and curr_name == new_name
-        if target_image is not None and replace == False:
-            print(f"Error moving image: file {new.as_posix()} already exists.")
-            return False
-
-        try:
-            if target_image is not None:
-                session.delete(target_image)
-
-            new_dorectory = session.exec(select(Directory).where(Directory.path == new_path)).first()
-            if not new_dorectory:
-                new_dorectory = Directory(path=new_path, is_watching=False)
-                session.add(new_dorectory)
-                session.flush()
-
-            image.directory_id = new_dorectory.id
-            image.filename = new_name
-            image.full_path = new.as_posix()
-            
-            session.commit()
-        except Exception as e:
-            print(f"Error moving image: {e}")
-            session.rollback()
-            return False
-        
-        if indexer.change_partition(indexer.COLLECTION_NAME, image.id, str(new_dorectory.id)) == False:
-            print(f"Error moving image: {new.as_posix()} in vector db")
-            return False
-
-        return True
+    return True
 
 
 
