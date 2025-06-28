@@ -1,0 +1,58 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  test:
+    name: Test Backend
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+   
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.16"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked --all-extras --dev
+        
+      - name: Set up Docker Compose
+        run: docker compose -f Docker-compose.yml up -d
+
+      - name: Wait for Milvus to be healthy
+        run: |
+          echo "Waiting for Milvus..."
+          timeout 180s bash -c '
+            until curl -s http://localhost:9091/healthz \
+              | tee /tmp/milvus_health.log \
+              | grep -q "OK"; do
+          
+              echo "[health-check] $(cat /tmp/milvus_health.log)"
+              sleep 5
+            done
+          '
+          
+      - name: Run tests
+        working-directory: backend
+        env:
+          GENAI_API_KEY: ${{ secrets.GENAI_API_KEY }}
+        run: uv run pytest
+
+      - name: Shut down containers
+        if: always()
+        run: docker compose -f Docker-compose.yml down
