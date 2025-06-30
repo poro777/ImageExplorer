@@ -1,84 +1,22 @@
-import time
 
-import database.database
-import database.utils
+from tests.utils import *
+from tests.constants import *
+
 import indexer
-import watcher.watchdogService
 indexer.COLLECTION_NAME = "test_collection"
-
 
 from datetime import datetime
 from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
-
-import database
 
 import indexer
-from main import app
 
-from sqlmodel.pool import StaticPool  
 from router.file_api import getPathOfImageFile, BASE_DIR
 from PIL import Image as ImageLoader
 from router.sqlite_api import inesrt_or_update_image
+from sqlmodel import Session, SQLModel, create_engine
 
-import watcher
-
-PATH_HUSKY_IMAGE = "husky_1.jpg"
-PATH_HUSKY_IMAGE_2 = "folder/husky_2.jpg"
-PATH_ROBOT_IMAGE = "robot_1.jpg"
-PATH_ROBOT_IMAGE_2 = "folder/robot_2.jpg"
-PATH_FLOWER_IMAGE = "flower.jpg"
-
-def wait_before_read_vecdb():
-    time.sleep(0.5)
-
-
-def clear_vector_db():
-    """Clear the vector database for testing purposes."""
-        # Clear the vector database collection before each test
-    if indexer.is_collection_exist(indexer.COLLECTION_NAME) == False:
-        indexer.create_embed_db(indexer.COLLECTION_NAME)
-
-    while True:
-        ids = [data[indexer.FIELD_ID] for data in indexer.list_data(indexer.COLLECTION_NAME)]
-        if len(ids) == 0:
-            break
-        delete = indexer.delete_by_list(indexer.COLLECTION_NAME, ids)
-        if delete == False:
-            raise RuntimeError("Failed to clear vector database collection")
-
-
-@pytest.fixture(name="session")
-def session_fixture(monkeypatch):
-    test_engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-
-    # Patch the global engine in your app code
-    monkeypatch.setattr(database.database, "engine", test_engine)
-    monkeypatch.setattr(database.utils, "engine", test_engine)
-    monkeypatch.setattr(watcher.watchdogService, "engine", test_engine)
-    assert database.database.engine is test_engine
-    assert database.utils.engine is test_engine
-    assert watcher.watchdogService.engine is test_engine
-
-    SQLModel.metadata.create_all(test_engine)
-
-    with Session(test_engine) as session:
-        yield session
-
-@pytest.fixture(name="client")  
-def client_fixture(session: Session):  
-    def get_session_override():  
-        return session
-
-    app.dependency_overrides[database.database.get_session] = get_session_override  
-
-    client = TestClient(app)  
-    yield client  
-    app.dependency_overrides.clear()  
 
 def test_getPathOfImageFile():
     # Test with a valid image file
@@ -112,9 +50,7 @@ def test_getPathOfImageFile():
 
 
 
-def test_root():
-    client = TestClient(app)  
-
+def test_root(client: TestClient):
     response = client.get("/")
 
     data = response.json()  
@@ -214,50 +150,6 @@ def test_add_not_existing_image(client: TestClient):
     assert len(data) == 0  # Assuming no images are present initially
 
 
-
-def test_query_images(client: TestClient, session: Session):
-
-    def query(text: str, use_text_embed: bool, use_bm25: bool, use_joint_embed: bool):
-        assert use_text_embed or use_bm25 or use_joint_embed, "At least one of the query methods must be used"
-        response = client.get("/api/query", params={
-            "text": text,
-            "use_text_embed": use_text_embed,
-            "use_bm25": use_bm25,
-            "use_joint_embed": use_joint_embed
-        })
-        
-        data = sorted(response.json(), key=lambda x: x['distance'], reverse=True) 
-        assert response.status_code == 200
-        assert len(data) >= 2 # at least two result should be returned
-        assert text in data[0]["filename"] and text in data[1]["filename"]
-
-    clear_vector_db()
-    inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
-    inesrt_or_update_image(PATH_HUSKY_IMAGE_2, session)
-    inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
-    inesrt_or_update_image(PATH_ROBOT_IMAGE_2, session)
-
-    wait_before_read_vecdb()
-
-    response = client.get("/image")
-    data = response.json()
-
-    assert response.status_code == 200
-    assert len(data) == 4
-
-    response = client.get("/api/query", params={"text": "husky", "use_text_embed": False, "use_bm25": False, "use_joint_embed": False})
-    data = response.json()
-    assert response.status_code == 200
-    assert len(data) == 0
-
-    query("husky", True, True, True)  
-    query("robot", True, True, True) 
-    query("husky", True, False, False)
-    query("robot", True, False, False)
-    query("husky", False, True, False)
-    query("robot", False, True, False)
-    query("husky", False, False, True)
-    query("robot", False, False, True)
 
 
 def test_lookup_image(client: TestClient, session: Session):
