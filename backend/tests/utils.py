@@ -1,0 +1,63 @@
+import indexer
+import time
+import shutil
+from pathlib import Path
+from pathlib import Path
+import indexer
+
+def copy_file(src_folder: Path, dst_folder: Path, filename: str):
+    src = src_folder / filename
+    dst = dst_folder / filename
+    assert src.is_file()
+    shutil.copy(src, dst)
+    assert dst.is_file(), "copy failed"
+
+
+def move_file(src_folder: Path, dst_folder: Path, filename: str):
+    src = src_folder / filename
+    dst = dst_folder / filename
+    assert src.is_file()
+    assert dst.exists() == False, "use replace_file instead"
+    shutil.move(src, dst)
+
+    assert dst.is_file() and src.exists() == False, "move failed"
+
+def delete_file(filePath: Path):
+    assert filePath.is_file()
+    filePath.unlink()
+
+    assert filePath.exists() == False, "delete failed"
+
+
+def rename_file(src_folder: Path, filename: str, new_filename: str):
+    file = src_folder / filename
+    new_file = src_folder / new_filename
+    assert file.is_file()
+    assert new_file.exists() == False, "file already exists, use replace_file instead"
+    file.rename(new_file)
+
+def replace_file(src_folder: Path, dst_folder: Path, filename: str):
+    file = src_folder / filename
+    new_file = dst_folder / filename
+    assert file.is_file()
+    assert new_file.is_file(), "no file to replace, use move_file instead"
+    file.replace(new_file)
+
+
+def wait_before_read_vecdb():
+    time.sleep(0.5)
+
+
+def clear_vector_db():
+    """Clear the vector database for testing purposes."""
+        # Clear the vector database collection before each test
+    if indexer.is_collection_exist(indexer.COLLECTION_NAME) == False:
+        indexer.create_embed_db(indexer.COLLECTION_NAME)
+
+    while True:
+        ids = [data[indexer.FIELD_ID] for data in indexer.list_data(indexer.COLLECTION_NAME)]
+        if len(ids) == 0:
+            break
+        delete = indexer.delete_by_list(indexer.COLLECTION_NAME, ids)
+        if delete == False:
+            raise RuntimeError("Failed to clear vector database collection")
