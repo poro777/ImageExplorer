@@ -34,7 +34,7 @@ def delete_all_images(session: Session = Depends(get_session)):
     
     # Delete all images from vector db
     while True:
-        ids = [data[indexer.FIELD_ID] for data in indexer.list_data(indexer.COLLECTION_NAME)]
+        ids = list(indexer.list_data(indexer.COLLECTION_NAME).keys())
         if len(ids) == 0:
             break
         delete = indexer.delete_by_list(indexer.COLLECTION_NAME, ids)

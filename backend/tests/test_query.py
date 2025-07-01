@@ -1,4 +1,5 @@
 from tests.utils import *
+from tests.constants import *
 
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -6,7 +7,6 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from router.file_api import getPathOfImageFile, BASE_DIR
 from router.sqlite_api import delete_image, inesrt_or_update_image
-from tests.constants import *
 
 
 def test_query_images(client: TestClient, session: Session):
@@ -76,12 +76,11 @@ def test_query_images_within_folder(client: TestClient, session: Session, tmp_pa
 
     wait_before_read_vecdb()
 
-    folder = "folder"
-    folder_path = Path(BASE_DIR / folder).resolve()
+    folder_path = Path(BASE_DIR / SUBFOLDER).resolve()
 
     assert folder_path.is_dir()
     
-    data = query("husky", folder)
+    data = query("husky", SUBFOLDER)
     assert len(data) >= 1
     assert "husky" in data[0]["filename"]
     

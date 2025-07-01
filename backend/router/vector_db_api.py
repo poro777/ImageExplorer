@@ -50,7 +50,5 @@ def query_all(path: Optional[str] = None):
     
     partitions = [str(partition_id)] if partition_id is not None else None
     results = indexer.list_data(indexer.COLLECTION_NAME, partitions)
-    
-    #TODO
 
     return results
