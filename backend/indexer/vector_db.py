@@ -344,6 +344,7 @@ def delete_one(collection: str, id):
 
     
 def list_data(collection: str, partitions: Optional[List[str]] = None):
+    '''return { id : text, ...}'''
     client = getClient()
 
     results = client.query(
@@ -355,8 +356,8 @@ def list_data(collection: str, partitions: Optional[List[str]] = None):
     )
 
     client.close()
-    return [ {FIELD_ID: tag[FIELD_ID],FIELD_TEXT: tag[FIELD_TEXT]} 
-            for tag in results]
+    return {tag[FIELD_ID]: tag[FIELD_TEXT] for tag in results} 
+            
 
 
 def dump_json_data(collection: str, output_path: str = "data.json"):

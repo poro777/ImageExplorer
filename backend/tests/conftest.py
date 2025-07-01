@@ -13,6 +13,8 @@ indexer.COLLECTION_NAME = "test_collection"
 
 from main import app
 
+indexer.create_embed_db(indexer.COLLECTION_NAME)
+
 @pytest.fixture(name="session")
 def session_fixture(monkeypatch):
     test_engine = create_engine(
