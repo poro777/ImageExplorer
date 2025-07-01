@@ -12,18 +12,18 @@ load_dotenv()
 genai_api_key = os.getenv("GENAI_API_KEY")
 
 if genai_api_key is None:
-    raise Exception("GENAI_API_KEY is not set")
+    raise Exception("GENAI_API_KEY is not set, please set it in .env file or environment variable")
 
 
 prompt_string = "Caption this image."
 CACHE_TEXT = {}
-USE_CACHE_TEXT = True
 
 last_explanation_time = 0
 COOLDOWN_PERIOD = 10  # seconds
 explain_image_lock = threading.Lock()
 
 def init():
+    '''load cache text and prompt string'''
     global CACHE_TEXT, prompt_string
     file_root = pathlib.Path(__file__).parent.resolve()
 
@@ -57,10 +57,10 @@ def sanitize_string(s):
     s = re.sub(r'[^a-z0-9\-]', '-', s)
     return s
 
-def explainImage(id:str, image_format, image_data: BytesIO):
-    global last_explanation_time, explain_image_lock, COOLDOWN_PERIOD, USE_CACHE_TEXT, CACHE_TEXT
+def explainImage(id:str, image_format, image_data: BytesIO, use_cache: bool = True):
+    global last_explanation_time, explain_image_lock, prompt_string, COOLDOWN_PERIOD, CACHE_TEXT
 
-    if USE_CACHE_TEXT and (id in CACHE_TEXT):
+    if use_cache and (id in CACHE_TEXT):
         return CACHE_TEXT[id]
         
     client = genai.Client(api_key=genai_api_key)
@@ -108,7 +108,7 @@ def explainImage(id:str, image_format, image_data: BytesIO):
 
     response = response.text if response.text is not None else ""
 
-    if USE_CACHE_TEXT:
+    if use_cache:
         CACHE_TEXT[id] = response
         store_cache()
     return response

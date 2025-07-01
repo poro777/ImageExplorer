@@ -13,7 +13,9 @@ import pytest
 import indexer
 
 from router.file_api import getPathOfImageFile, BASE_DIR
+
 from PIL import Image as ImageLoader
+
 from router.sqlite_api import inesrt_or_update_image
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -115,12 +117,8 @@ def test_add_images(client: TestClient):
 
     assert response.status_code == 200
     assert len(data) == 2
-    for i in range(2):
-        if data[i][indexer.vector_db.FIELD_ID] == 1:
-            assert "husky" in data[0][indexer.vector_db.FIELD_TEXT]
-        elif data[i][indexer.vector_db.FIELD_ID] == 2:
-            assert "robot" in data[1][indexer.vector_db.FIELD_TEXT]
-
+    assert "husky" in data['1']
+    assert "robot" in data['2']
 
 def test_add_not_existing_image(client: TestClient):
     clear_vector_db()
@@ -216,7 +214,7 @@ def test_delete_images(client: TestClient, session: Session):
     data = response.json()
     assert response.status_code == 200
     assert len(data) == 1
-    assert data[0][indexer.vector_db.FIELD_ID] == 2  # husky should remain
+    assert '2' in data  # husky should remain
 
     # delete the remaining image
     id = 2
@@ -265,3 +263,51 @@ def test_delete_all_images(client: TestClient, session: Session):
     # try to delete empty database
     response = client.delete("/image/delete_all")
     assert response.status_code == 200
+
+def test_list_vecdb(client: TestClient, session: Session, tmp_path: Path):
+    clear_vector_db()
+
+    response = client.get("/api/list")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert len(data) == 0
+
+    inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
+    inesrt_or_update_image(PATH_HUSKY_IMAGE_2, session)
+
+    wait_before_read_vecdb()
+
+    response = client.get("/api/list")
+    data = response.json()
+
+    assert response.status_code == 200
+    assert len(data) == 2
+    assert '1' in data
+    assert '2' in data
+
+
+    abs_path = BASE_DIR.resolve().as_posix()
+    response = client.get("/api/list", params={"path":abs_path})
+    data = response.json()
+
+    assert response.status_code == 200
+    assert len(data) == 1
+    assert '1' in data
+
+    relative_path = SUBFOLDER # relative to BASE_DIR
+    response = client.get("/api/list", params={"path":relative_path})
+    data = response.json()
+
+    assert response.status_code == 200
+    assert len(data) == 1
+    assert '2' in data
+
+    response = client.get("/api/list", params={"path":tmp_path.as_posix()})
+    
+    assert response.status_code == 404
+
+
+
+
+
