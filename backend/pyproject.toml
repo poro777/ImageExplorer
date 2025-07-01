@@ -13,6 +13,7 @@ dependencies = [
     "open-clip-torch>=2.32.0",
     "pymilvus[model]>=2.5.11",
     "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
     "requests>=2.32.4",
     "sqlmodel>=0.0.24",
     "torch>=2.7.1",
