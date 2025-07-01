@@ -9,7 +9,7 @@ from watchdog.events import FileSystemEventHandler
 from pathlib import Path
 import threading
 
-from database.database import engine
+import database.database as db
 
 from router.file_api import ALLOWED_EXTENSIONS
 from router.sqlite_api import inesrt_or_update_image, delete_image, move_image_path
@@ -150,7 +150,7 @@ class ChangedFile:
 def process_file(file: ChangedFile, id):
     print(f"[watchdog - Processing - {id}] {file.type} {file.src} -> {file.dst if file.dst else 'N/A'}")
     file_path = file.src.as_posix()
-    with Session(engine) as session:
+    with Session(db.engine) as session:
         if file.type == FileChangeType.CREATED or file.type == FileChangeType.MODIFIED:
             try:
                 if inesrt_or_update_image(file_path, session) is not None:
