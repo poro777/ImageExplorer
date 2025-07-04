@@ -11,13 +11,17 @@ import indexer
 
 from router.file_api import getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
 from datetime import datetime
-from watcher import fs_watcher
+from watcher import fs_watcher, get_N_files
 
 
 router = APIRouter(
-    prefix="/dir",
-    tags=["directory"],
+    prefix="/watcher",
+    tags=["watcher"],
 )
+
+@router.get("/")
+def watcher_is_ready():
+    return "Ok" if (get_N_files() == 0) else "Not ready"
 
 
 @router.post("/add", response_model=List[Image])
