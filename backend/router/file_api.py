@@ -6,6 +6,8 @@ from sqlmodel import Session, select
 
 from database.models import Image
 from database.database import get_session
+from PIL import Image as ImageLoader
+from PIL import UnidentifiedImageError
 
 router = APIRouter(
     tags=["file"],
@@ -14,6 +16,14 @@ router = APIRouter(
 BASE_DIR = Path("images").resolve()
 ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
 
+def is_image(path: Path) -> bool:
+    try:
+        with ImageLoader.open(path) as img:
+            img.verify()  # Check integrity without decoding pixel data
+        return True
+    except (UnidentifiedImageError, OSError):
+        return False
+    
 def getPathOfImageFile(file_path: str) -> Path | None:
     image_path = (BASE_DIR / file_path).resolve()
     if (not image_path.is_file() or image_path.suffix.lower() not in ALLOWED_EXTENSIONS):
@@ -36,8 +46,8 @@ def get_image(path: str, session: Session = Depends(get_session)):
     image_path = getPathOfImageFile(path)
 
     # Ensure it's inside static dir and is a valid image file
-    if image_path is None:
-        raise HTTPException(status_code=404, detail="Invalid image path")
+    if (image_path is None) or (is_image(image_path) == False):
+        raise HTTPException(status_code=404, detail="Invalid image")
 
     image = session.exec(select(Image).where(Image.full_path == image_path.as_posix())).first()
 
