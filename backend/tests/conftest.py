@@ -1,6 +1,10 @@
+from tests.utils import *
+from tests.constants import *
 
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
+from watcher import fs_watcher
 
 
 import database.database
@@ -40,3 +44,21 @@ def client_fixture(session: Session):
     client = TestClient(app)  
     yield client  
     app.dependency_overrides.clear()  
+
+@pytest.fixture
+def tmp_images_path(tmp_path: Path) -> Path:
+    copy_file(BASE_DIR, tmp_path, PATH_HUSKY_IMAGE)
+    copy_file(BASE_DIR, tmp_path, PATH_FLOWER_IMAGE)
+    copy_file(BASE_DIR, tmp_path, PATH_ROBOT_IMAGE)
+    folder = tmp_path / SUBFOLDER
+    folder.mkdir()
+    copy_file(BASE_DIR, tmp_path, PATH_HUSKY_IMAGE_2)
+    copy_file(BASE_DIR, tmp_path, PATH_ROBOT_IMAGE_2)
+    
+    return tmp_path
+
+@pytest.fixture(name="fs_watcher")
+def fs_watcher_fixture(session: Session):
+    fs_watcher.start()
+    yield fs_watcher
+    fs_watcher.stop()

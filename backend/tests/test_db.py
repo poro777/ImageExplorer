@@ -161,7 +161,7 @@ def test_lookup_image(client: TestClient, session: Session):
     data = response.json()
     assert response.status_code == 200
     assert data["id"] == 1
-    assert data["filename"] == getPathOfImageFile(PATH_HUSKY_IMAGE).name
+    assert data["filename"] == HUSKY_IMAGE
 
     robotFile = getPathOfImageFile(PATH_ROBOT_IMAGE_2)
     
@@ -169,13 +169,13 @@ def test_lookup_image(client: TestClient, session: Session):
     data = response.json()
     assert response.status_code == 200
     assert data["id"] == 2
-    assert data["filename"] == robotFile.name
+    assert data["filename"] == ROBOT_IMAGE_2
 
     response = client.get("/image/lookup", params={"file": robotFile.as_posix()})
     data = response.json()
     assert response.status_code == 200
     assert data["id"] == 2
-    assert data["filename"] == robotFile.name
+    assert data["filename"] == ROBOT_IMAGE_2
 
 
     # test_lookup_non_existing_image

@@ -226,8 +226,12 @@ def process_waitting_list(id):
                     break
 
             else:
-                # If no file was found, continue to the next iteration
+                # If no file was found, or files are processd by other threads
+                # stop this thread
+                print(f"[watchdog - Thread {id}] Sleep")
+                condition.wait()
                 continue
+
         
         while True: # process the files in the list until the list is empty
             with list_lock:
@@ -323,7 +327,7 @@ class WatchdogService:
         self.handler = ImageChangeHandler()
         self.watches = {}
         self.process_threads = []
-        self.N = 3
+        self.N = 1
         for i in range(self.N):
             self.process_threads.append(threading.Thread(target=process_waitting_list, args=(i,), daemon=True))
     def add(self, path: Path):

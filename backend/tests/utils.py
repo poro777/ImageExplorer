@@ -6,6 +6,9 @@ from pathlib import Path
 import indexer
 
 def copy_file(src_folder: Path, dst_folder: Path, filename: str):
+    if src_folder == dst_folder:
+        return
+
     src = src_folder / filename
     dst = dst_folder / filename
     assert src.is_file()

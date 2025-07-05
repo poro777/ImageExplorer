@@ -1,15 +1,55 @@
 from fastapi.testclient import TestClient
+import pytest
 from sqlmodel import Session
 from tests.constants import *
 from tests.utils import *
 
-from watcher import fs_watcher
 from watcher.watchdogService import *
 
 from router.sqlite_api import delete_image, inesrt_or_update_image
 from router.file_api import getPathOfImageFile
 
 from datetime import datetime, timedelta
+
+def wait_watchdog_done():
+    """Waits for the watchdog service to process all pending file events.
+
+    This function polls the number of files in the watchdog's waiting list
+    and exits when the list is empty.
+    """
+    time.sleep(DELAY) # wait event start
+    while get_N_files() > 0:
+        time.sleep(0.1)
+
+@pytest.mark.timeout(60)
+def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+
+    base = tmp_images_path
+    subfolder = tmp_images_path / SUBFOLDER
+
+    fs_watcher.add(base)
+    fs_watcher.add(subfolder)
+
+    copy_file(base, subfolder, HUSKY_IMAGE)
+    copy_file(subfolder, base, HUSKY_IMAGE_2)
+
+    wait_watchdog_done()
+    
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == 2
+
+    response = client.get("/image/lookup", params={"file": (subfolder / HUSKY_IMAGE).as_posix()})
+    data = response.json()
+    assert response.status_code == 200
+    assert data["filename"] == HUSKY_IMAGE
+
+    response = client.get("/image/lookup", params={"file": (base / HUSKY_IMAGE_2).as_posix()})
+    data = response.json()
+    assert response.status_code == 200
+    assert data["filename"] == HUSKY_IMAGE_2
+
 
 def test_ChangedFile_OTHER():
     file_path = getPathOfImageFile(PATH_HUSKY_IMAGE)
