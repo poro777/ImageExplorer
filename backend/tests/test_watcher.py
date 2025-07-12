@@ -11,6 +11,10 @@ from router.file_api import getPathOfImageFile
 
 from datetime import datetime, timedelta
 
+from PIL import Image as ImageLoader
+from PIL.ImageFile import ImageFile
+
+
 def wait_watchdog_done():
     """Waits for the watchdog service to process all pending file events.
 
@@ -23,7 +27,8 @@ def wait_watchdog_done():
 
 @pytest.mark.timeout(60)
 def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-
+    clear_vector_db()
+    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -50,6 +55,163 @@ def test_watchdog_create(client: TestClient, session: Session, fs_watcher: Watch
     assert response.status_code == 200
     assert data["filename"] == HUSKY_IMAGE_2
 
+@pytest.mark.timeout(60)
+def test_watchdog_move(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+    clear_vector_db()
+
+    base = tmp_images_path
+    subfolder = tmp_images_path / SUBFOLDER
+
+    fs_watcher.add(base)
+    fs_watcher.add(subfolder)
+
+    images = [HUSKY_IMAGE, FLOWER_IMAGE, ROBOT_IMAGE]
+    for image in images:
+        file = base / image
+        moved_file = subfolder / image
+        inesrt_or_update_image(file.as_posix(), session)
+
+    wait_before_read_vecdb()
+
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == len(images)
+
+    for image in images:
+        file = base / image
+        response = client.get("/image/lookup", params={"file": file.as_posix()})
+        assert response.status_code == 200
+
+    response = client.get("api/list", params={"path": base.as_posix()})
+    assert response.status_code == 200
+    assert len(response.json()) == len(images)
+
+    response = client.get("api/list", params={"path": subfolder.as_posix()})
+    assert response.status_code == 404
+
+    for image in images:
+        move_file(base, subfolder, image)
+
+    wait_watchdog_done()
+    
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == len(images)
+
+    for image in images:
+        moved_file = subfolder / image
+        response = client.get("/image/lookup", params={"file": moved_file.as_posix()})
+        assert response.status_code == 200
+
+    wait_before_read_vecdb()
+
+    response = client.get("api/list", params={"path": base.as_posix()})
+    assert response.status_code == 200
+    assert len(response.json()) == 0
+
+    response = client.get("api/list", params={"path": subfolder.as_posix()})
+    assert response.status_code == 200
+    assert len(response.json()) == len(images)
+
+def test_watchdog_delete(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+    clear_vector_db()
+
+    base = tmp_images_path
+
+    fs_watcher.add(base)
+    images = [HUSKY_IMAGE, FLOWER_IMAGE, ROBOT_IMAGE]
+    for image in images:
+        file = base / image
+        inesrt_or_update_image(file.as_posix(), session)
+    wait_before_read_vecdb()
+
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == len(images)
+    
+    delete_file(base / HUSKY_IMAGE)
+    wait_watchdog_done()
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == 2
+
+    delete_file(base / FLOWER_IMAGE)
+    wait_watchdog_done()
+    response = client.get("/image")
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data) == 1
+    assert data[0]["full_path"] == (base / ROBOT_IMAGE).as_posix()
+
+def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+    from io import BytesIO
+
+    clear_vector_db()
+
+    base = tmp_images_path
+
+    fs_watcher.add(base)
+    file = base / HUSKY_IMAGE
+    new_file = base / ("renamed_" + HUSKY_IMAGE)
+
+    inesrt_or_update_image(file.as_posix(), session)
+    wait_before_read_vecdb()
+
+    response = client.get("/image/lookup", params={"file": file.as_posix()})
+    assert response.status_code == 200
+
+    response = client.get("/image/lookup", params={"file": new_file.as_posix()})
+    assert response.status_code == 404
+    
+    rename_file(base, HUSKY_IMAGE, new_file.name)
+
+    wait_watchdog_done()
+
+    response = client.get("/image/lookup", params={"file": file.as_posix()})
+    assert response.status_code == 404
+
+    response = client.get("/image/lookup", params={"file": new_file.as_posix()})
+    assert response.status_code == 200
+
+def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+    from io import BytesIO
+    clear_vector_db()
+
+    base = tmp_images_path
+
+    fs_watcher.add(base)
+    file = base / HUSKY_IMAGE
+    inesrt_or_update_image(file.as_posix(), session)
+    wait_before_read_vecdb()
+
+    new_file = base / ("renamed_" + HUSKY_IMAGE) # rename to new file to prevent genai cache
+    
+    rename_file(base, HUSKY_IMAGE, new_file.name)
+    
+    wait_watchdog_done()
+
+    image: ImageFile = ImageLoader.open(BASE_DIR / FLOWER_IMAGE)
+    image.save(new_file, format=image.format)
+
+    wait_watchdog_done()
+
+    response = client.get("/image/lookup", params={"file": new_file.as_posix()})
+    assert response.status_code == 200
+
+    wait_before_read_vecdb()
+
+    response = client.get("/api/list")
+    data = response.json()
+    assert response.status_code == 200
+    assert '1' in data
+    text = data['1']
+    assert any((keywork in text) for keywork in ["flower", "floral", "baby's breath"])
+
+    indexer.genai_api.delete_uploaded_file(indexer.genai_api.sanitize_string(new_file.name))
 
 def test_ChangedFile_OTHER():
     file_path = getPathOfImageFile(PATH_HUSKY_IMAGE)

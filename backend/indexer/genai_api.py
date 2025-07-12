@@ -54,7 +54,9 @@ def store_cache():
     
 def sanitize_string(s):
     s = s.lower()
-    s = re.sub(r'[^a-z0-9\-]', '-', s)
+    s = re.sub(r'[^a-z0-9\-]', '-', s)[-40:] # limit to 40 char
+    if s[0] == "-":
+        s = s.replace("-", "a", 1)
     return s
 
 def explainImage(id:str, image_format, image_data: BytesIO, use_cache: bool = True):
@@ -66,10 +68,6 @@ def explainImage(id:str, image_format, image_data: BytesIO, use_cache: bool = Tr
     client = genai.Client(api_key=genai_api_key)
 
     file_id = sanitize_string(id)
-    file_id = file_id[-40:] # limit to 40 char
-    if file_id[0] == "-":
-        file_id = file_id.replace("-", "a", 1)
-
 
     try:
         print(f"[GET file] {file_id}")
@@ -110,7 +108,7 @@ def explainImage(id:str, image_format, image_data: BytesIO, use_cache: bool = Tr
 
     if use_cache:
         CACHE_TEXT[id] = response
-        store_cache()
+        #store_cache()
     return response
 
 
@@ -120,9 +118,18 @@ def list_uploaded_files():
     for f in client.files.list():
         print(f.name)
 
+def delete_uploaded_file(file_id: str):
+    client = genai.Client(api_key=genai_api_key)
+    try:
+        file_id = sanitize_string(file_id)
+        my_file = client.files.get(name=file_id)
+    except Exception as e:
+        return False
+    client.files.delete(name=my_file.name)
+    return True
+
 def delete_uploaded_files():
     client = genai.Client(api_key=genai_api_key)
-    print(f'Delete: {len(client.files.list())}')
     for f in client.files.list():
         client.files.delete(name=f.name)
 

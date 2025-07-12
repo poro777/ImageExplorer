@@ -307,7 +307,7 @@ class ImageChangeHandler(FileSystemEventHandler):
             return
         
         is_rename = is_image(src)
-        # rename from temproal file, take the same action as modify
+        # may be rename from temproal file .TMP or .tmp, take the same action as modify
         is_update = not is_image(src) 
 
         mtime = datetime.fromtimestamp(dst.stat().st_mtime)

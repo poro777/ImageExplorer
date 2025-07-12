@@ -4,8 +4,7 @@ from tests.constants import *
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
-from watcher import fs_watcher
-
+import watcher
 
 import database.database
 
@@ -18,6 +17,8 @@ indexer.COLLECTION_NAME = "test_collection"
 from main import app
 
 indexer.create_embed_db(indexer.COLLECTION_NAME)
+
+indexer.genai_api.delete_uploaded_files()
 
 @pytest.fixture(name="session")
 def session_fixture(monkeypatch):
@@ -59,6 +60,7 @@ def tmp_images_path(tmp_path: Path) -> Path:
 
 @pytest.fixture(name="fs_watcher")
 def fs_watcher_fixture(session: Session):
+    fs_watcher = watcher.WatchdogService()
     fs_watcher.start()
     yield fs_watcher
     fs_watcher.stop()
