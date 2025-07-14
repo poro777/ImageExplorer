@@ -1,7 +1,10 @@
+from tests.utils import *
+from tests.constants import *
 
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
-
+import watcher
 
 import database.database
 
@@ -12,8 +15,10 @@ import indexer
 indexer.COLLECTION_NAME = "test_collection"
 
 from main import app
-
+import watcher
 indexer.create_embed_db(indexer.COLLECTION_NAME)
+
+indexer.genai_api.delete_uploaded_files()
 
 @pytest.fixture(name="session")
 def session_fixture(monkeypatch):
@@ -40,3 +45,26 @@ def client_fixture(session: Session):
     client = TestClient(app)  
     yield client  
     app.dependency_overrides.clear()  
+
+@pytest.fixture
+def tmp_images_path(tmp_path: Path) -> Path:
+    copy_file(BASE_DIR, tmp_path, PATH_HUSKY_IMAGE)
+    copy_file(BASE_DIR, tmp_path, PATH_FLOWER_IMAGE)
+    copy_file(BASE_DIR, tmp_path, PATH_ROBOT_IMAGE)
+    folder = tmp_path / SUBFOLDER
+    folder.mkdir()
+    copy_file(BASE_DIR, tmp_path, PATH_HUSKY_IMAGE_2)
+    copy_file(BASE_DIR, tmp_path, PATH_ROBOT_IMAGE_2)
+    
+    return tmp_path
+
+@pytest.fixture(name="fs_watcher")
+def fs_watcher_fixture(monkeypatch,session: Session):
+    fs_watcher = watcher.WatchdogService()
+
+    monkeypatch.setattr(watcher, "fs_watcher", fs_watcher)
+    assert watcher.fs_watcher is fs_watcher
+
+    fs_watcher.start()
+    yield fs_watcher
+    fs_watcher.stop()

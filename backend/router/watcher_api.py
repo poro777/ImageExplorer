@@ -11,13 +11,16 @@ import indexer
 
 from router.file_api import getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
 from datetime import datetime
-from watcher import fs_watcher
-
+import watcher
 
 router = APIRouter(
-    prefix="/dir",
-    tags=["directory"],
+    prefix="/watcher",
+    tags=["watcher"],
 )
+
+@router.get("/")
+def watcher_is_ready():
+    return "Ok" if (watcher.get_N_files() == 0) else "Not ready"
 
 
 @router.post("/add", response_model=List[Image])
@@ -83,7 +86,7 @@ def add_path_to_listener(path: str, session: Session = Depends(get_session)):
                 continue
             
 
-    fs_watcher.add(path)
+    watcher.fs_watcher.add(path)
     return images
 
 
@@ -94,7 +97,7 @@ def remove_path_from_listener(path: str, delete_images: bool = False, session: S
     if path is None:
         raise HTTPException(status_code=404, detail="Path not found")
     
-    if fs_watcher.remove(path) == False:
+    if watcher.fs_watcher.remove(path) == False:
         raise HTTPException(status_code=400, detail="Path is not listening")
 
     directory = session.exec(

@@ -10,6 +10,7 @@ from pathlib import Path
 import threading
 
 import database.database as db
+from enum import Enum
 
 from router.file_api import ALLOWED_EXTENSIONS
 from router.sqlite_api import inesrt_or_update_image, delete_image, move_image_path
@@ -62,20 +63,21 @@ def only_update_metadata(file: Path):
     
     return datetime.fromtimestamp(mtime) == image.last_modified
         
-class FileChangeType:
+class FileChangeType(Enum):
     CREATED = "created"
     DELETED = "deleted"
     MODIFIED = "modified"
     MOVED = "moved"
-    REPLACED = "replaced"
 
 class ChangedFile:
-    def __init__(self, src: Path,  change_type: str, mtime: datetime, dst: Optional[Path] = None):
+    def __init__(self, src: Path,  change_type: FileChangeType, mtime: datetime, dst: Optional[Path] = None):
+        if type(change_type) is not FileChangeType:
+            raise ValueError(f"Invalid change type: {change_type}")
+        
         self.src = src.resolve()
         self.dst = dst.resolve() if dst else None
         self.type = change_type
         self.mtime = mtime
-        self.time = time.time()
 
     def _match_move_cond(self, src: Optional[Path], smtime: Optional[datetime], dst: Optional[Path], dmtime: Optional[datetime]):
         if src is None or dst is None or smtime is None or dmtime is None:
@@ -87,61 +89,62 @@ class ChangedFile:
             return False
         return (src == dst)
     
-    def change_type(self, type: str, path: Path = None, mtime: datetime = None):
+    def change_type(self, new_type: str, path: Path = None, mtime: datetime = None):
         '''
             input type: create, delete, modify
         '''
+        if type(new_type) is not FileChangeType:
+            raise ValueError(f"Invalid change type: {new_type}")
         
         path = path.resolve() if path else None
         match self.type:
             case FileChangeType.CREATED:
-                if type == FileChangeType.DELETED and self._match_move_cond(self.src, self.mtime, path, mtime):
+                if new_type == FileChangeType.DELETED and self._match_move_cond(self.src, self.mtime, path, mtime):
                     # with same basename and mtime, consider it as a move
                     self.type = FileChangeType.MOVED
                     self.dst = self.src
                     self.src = path
-                elif type == FileChangeType.MODIFIED and self._same_path(self.src, path):
+                elif new_type == FileChangeType.DELETED and self._same_path(self.src, path):
+                    self.type = FileChangeType.DELETED
+                    self.mtime = mtime
+                elif new_type == FileChangeType.MODIFIED and self._same_path(self.src, path):
                     # if modified, keep the same src and update mtime
                     self.type = FileChangeType.MODIFIED
                     self.mtime = mtime
                 else:
-                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {new_type}", self.src, path)
                     return False
                 
             case FileChangeType.DELETED:
-                if type == FileChangeType.CREATED and self._match_move_cond(self.src, self.mtime, path, mtime):
+                if new_type == FileChangeType.CREATED and self._match_move_cond(self.src, self.mtime, path, mtime):
                     # with same basename and mtime, consider it as a move
                     self.type = FileChangeType.MOVED
                     self.dst = path
-                elif type == FileChangeType.DELETED and not self._same_path(self.src, path):
+                elif new_type == FileChangeType.DELETED and not self._same_path(self.src, path):
                     # TODO: delete with same basename but different path
                     # consider it as a move and replace if there is create later.
                     return False
                 else:
-                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {new_type}", self.src, path)
                     return False
                 
             case FileChangeType.MODIFIED: 
-                if type == FileChangeType.MODIFIED and self._same_path(self.src, path):
+                if new_type == FileChangeType.MODIFIED and self._same_path(self.src, path):
                     self.mtime = mtime
-                elif type == FileChangeType.DELETED and self._same_path(self.src, path):
+                elif new_type == FileChangeType.DELETED and self._same_path(self.src, path):
                     # if deleted, keep the same src and update mtime
                     self.type = FileChangeType.DELETED
                     self.mtime = mtime
                 else:
-                    print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                    print(f"[watchdog] Change type mismatch: {self.type} -> {new_type}", self.src, path)
                     return False
                 
             case FileChangeType.MOVED:
-                print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
-                return False
-            case FileChangeType.REPLACED:
-                print(f"[watchdog] Change type mismatch: {self.type} -> {type}", self.src, path)
+                print(f"[watchdog] Change type mismatch: {self.type} -> {new_type}", self.src, path)
                 return False
             case _:
-                raise ValueError(f"Unknown change type: {type}")
+                return False
             
-        self.time = time.time()
         return True
     
     def __repr__(self):
@@ -175,6 +178,10 @@ def process_file(file: ChangedFile, id):
             else:
                 print(f"[watchdog - Result - {id}] Error moving image: {file.src} -> {file.dst}")
 
+def get_N_files():
+    with list_lock:
+        return len(waitting_list)
+
 def add_file(src: Path, type: str, mtime: datetime, dst: Optional[Path] = None):
     global last_add_time
     src = src.resolve()
@@ -201,10 +208,11 @@ def process_waitting_list(id):
 
         with condition:
             while len(waitting_list) == 0:
+                print(f"[watchdog - Thread {id}] Sleep")
                 condition.wait()  # Sleep until notified
                 if not run_thread:
                     return
-                print(f"[watchdog - Thread {id}] Woke up at time {datetime.fromtimestamp(time.time())}")
+                print(f"[watchdog - Thread {id}] Woke up")
 
             if last_add_time + DELAY > time.time(): # wait for all files change are done
                 continue
@@ -218,8 +226,12 @@ def process_waitting_list(id):
                     break
 
             else:
-                # If no file was found, continue to the next iteration
+                # If no file was found, or files are processd by other threads
+                # stop this thread
+                print(f"[watchdog - Thread {id}] Sleep")
+                condition.wait()
                 continue
+
         
         while True: # process the files in the list until the list is empty
             with list_lock:
@@ -230,6 +242,7 @@ def process_waitting_list(id):
             with list_lock:
                 if len(item.files) == 0:
                     item.is_processing = False # unlock the processing flag
+                    waitting_list.pop(name)
                     break
             
         
@@ -294,7 +307,7 @@ class ImageChangeHandler(FileSystemEventHandler):
             return
         
         is_rename = is_image(src)
-        # rename from temproal file, take the same action as modify
+        # may be rename from temproal file .TMP or .tmp, take the same action as modify
         is_update = not is_image(src) 
 
         mtime = datetime.fromtimestamp(dst.stat().st_mtime)
@@ -314,7 +327,7 @@ class WatchdogService:
         self.handler = ImageChangeHandler()
         self.watches = {}
         self.process_threads = []
-        self.N = 3
+        self.N = 1
         for i in range(self.N):
             self.process_threads.append(threading.Thread(target=process_waitting_list, args=(i,), daemon=True))
     def add(self, path: Path):
