@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from pathlib import Path
 import indexer
+from watcher.watchdogService import get_N_files, DELAY
 
 def copy_file(src_folder: Path, dst_folder: Path, filename: str):
     if src_folder == dst_folder:
@@ -60,3 +61,13 @@ def clear_vector_db():
         delete = indexer.delete_by_list(indexer.COLLECTION_NAME, ids)
         if delete == False:
             raise RuntimeError("Failed to clear vector database collection")
+
+def wait_watchdog_done():
+    """Waits for the watchdog service to process all pending file events.
+
+    This function polls the number of files in the watchdog's waiting list
+    and exits when the list is empty.
+    """
+    time.sleep(DELAY) # wait event start
+    while get_N_files() > 0:
+        time.sleep(0.1)

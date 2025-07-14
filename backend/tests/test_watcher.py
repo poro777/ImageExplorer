@@ -15,16 +15,6 @@ from PIL import Image as ImageLoader
 from PIL.ImageFile import ImageFile
 
 
-def wait_watchdog_done():
-    """Waits for the watchdog service to process all pending file events.
-
-    This function polls the number of files in the watchdog's waiting list
-    and exits when the list is empty.
-    """
-    time.sleep(DELAY) # wait event start
-    while get_N_files() > 0:
-        time.sleep(0.1)
-
 @pytest.mark.timeout(60)
 def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
     clear_vector_db()

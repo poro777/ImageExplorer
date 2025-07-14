@@ -7,8 +7,7 @@ from database import models
 
 from database import database
 import indexer
-from watcher import fs_watcher
-
+import watcher
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,11 +16,11 @@ async def lifespan(app: FastAPI):
     if indexer.is_collection_exist(indexer.COLLECTION_NAME) == False:
         indexer.create_embed_db(indexer.COLLECTION_NAME)
 
-    fs_watcher.start()
+    watcher.fs_watcher.start()
 
     yield
 
-    fs_watcher.stop()
+    watcher.fs_watcher.stop()
 
 app = FastAPI(lifespan=lifespan)
 

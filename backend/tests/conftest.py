@@ -15,7 +15,7 @@ import indexer
 indexer.COLLECTION_NAME = "test_collection"
 
 from main import app
-
+import watcher
 indexer.create_embed_db(indexer.COLLECTION_NAME)
 
 indexer.genai_api.delete_uploaded_files()
@@ -59,8 +59,12 @@ def tmp_images_path(tmp_path: Path) -> Path:
     return tmp_path
 
 @pytest.fixture(name="fs_watcher")
-def fs_watcher_fixture(session: Session):
+def fs_watcher_fixture(monkeypatch,session: Session):
     fs_watcher = watcher.WatchdogService()
+
+    monkeypatch.setattr(watcher, "fs_watcher", fs_watcher)
+    assert watcher.fs_watcher is fs_watcher
+
     fs_watcher.start()
     yield fs_watcher
     fs_watcher.stop()
