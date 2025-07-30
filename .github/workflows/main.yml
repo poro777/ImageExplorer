@@ -3,8 +3,8 @@ name: Backend Tests
 on:
   pull_request:
     branches: [ "master" ]
-  paths:
-    - 'backend/**'
+    paths:
+      - 'backend/**'
 
 jobs:
   test:
