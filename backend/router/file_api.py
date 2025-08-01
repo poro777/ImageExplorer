@@ -47,11 +47,11 @@ def get_image(path: str, session: Session = Depends(get_session)):
 
     # Ensure it's inside static dir and is a valid image file
     if (image_path is None) or (is_image(image_path) == False):
-        raise HTTPException(status_code=404, detail="Invalid image")
+        raise HTTPException(status_code=404, detail=f"Invalid image: {path}")
 
     image = session.exec(select(Image).where(Image.full_path == image_path.as_posix())).first()
 
     if image is None:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=404, detail=f"Image not found: {image_path.as_posix()}")
 
     return FileResponse(path=image_path)
