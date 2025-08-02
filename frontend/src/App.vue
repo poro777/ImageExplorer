@@ -1,15 +1,40 @@
 <template>
-  <div>
-    <BButton variant="primary" @click="addFolder">Add Folder</BButton>
+  <div style="margin-bottom: 1em;">
+    <BInputGroup
+      prepend="Folder"
+      class="mt-3"
+    >
+      <BButton v-if="isElectron" variant="primary" @click="selectFolder">Select</BButton>
+      <BFormInput v-model="selectedFolder" placeholder="Path" @keyup.enter="addFolder"/>
+      <BButton variant="primary" @click="addFolder">Add</BButton>
+    </BInputGroup>
   </div>
 
   <div class="directory-block">
     <BInputGroup
-      prepend="Query"
+      prepend="Search"
       class="mt-3"
     >
       <BFormInput v-model="queryText" @keyup.enter="fetchResults"/>
-      <BButton variant="info" @click="fetchResults">Go</BButton>
+      
+      <BDropdown
+        split
+        @split-click="fetchResults"
+        text="Go"
+        class="me-2"
+        variant="info"
+        auto-close="outside"
+      >
+        <BFormCheckbox
+            v-for="(option, index) in queryOptions"
+            :key="index"
+            v-model="selectedQueryOptions"
+            :value="option.value"
+          >
+            {{ option.text }}
+          </BFormCheckbox>
+
+      </BDropdown>
     </BInputGroup>
 
     <div v-if="results.length" class="gallery" >
@@ -64,9 +89,25 @@ const currentGroup = ref([])
 const currentIndex = ref(0)
 const show = ref(false)
 const queryText = ref('')
+const selectedFolder = ref('')
 const results = ref([])
 const currentImage = ref('')
 
+const isElectron = ref(false);
+
+const queryOptions = [
+  {text: 'Semantic Search', value: 'use_text_embed'},
+  {text: 'Exact Match', value: 'use_bm25'},
+  {text: 'Image Search', value: 'use_joint_embed'} ]
+
+const selectedQueryOptions = ref(['use_text_embed', 'use_bm25', 'use_joint_embed'])
+
+onMounted(() => {
+  // The `electronAPI` object will exist on the window if in Electron.
+  if (window.electronAPI) {
+    isElectron.value = true;
+  }
+});
 
 const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
 
@@ -107,14 +148,27 @@ onMounted(async () => {
   }
 })
 
+const selectFolder = async () => {
+  if (!isElectron.value) return
+
+  try {
+    const folderPath = await window.electronAPI.selectFolder()
+    if (folderPath) {
+      selectedFolder.value = folderPath
+    }
+  } catch (err) {
+    console.error('Failed to select folder', err)
+    alert('Failed to select folder. Check console for details.')
+  }
+}
+
 const addFolder = async () => {
-  const folderPath = await window.electronAPI.selectFolder()
-  if (!folderPath) return
+  if (!selectedFolder) return
 
   await axios.post('http://127.0.0.1:8000/watcher/add', null, {
-    params: { path: folderPath }
+    params: { path: selectedFolder.value }
   })
-  alert(`Folder added: ${folderPath}`)
+  alert(`Folder added: ${selectedFolder.value}`)
 }
 
 
@@ -129,7 +183,12 @@ const deleteFolder = async (folderPath) => {
 const fetchResults = async () => {
   try {
     const res = await axios.get('http://127.0.0.1:8000/api/query', {
-      params: { text: queryText.value, use_text_embed : true, use_bm25 : true, use_joint_embed : true }
+      params: { 
+        text: queryText.value, 
+        use_text_embed : selectedQueryOptions.value.includes('use_text_embed'), 
+        use_bm25 : selectedQueryOptions.value.includes('use_bm25'), 
+        use_joint_embed : selectedQueryOptions.value.includes('use_joint_embed')
+      }
     })
     results.value = res.data
   } catch (err) {
@@ -148,6 +207,7 @@ const fetchResults = async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin: 1em;
 }
 
 .thumbnail img {

@@ -23,5 +23,9 @@ ipcMain.handle('select-folder', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+ipcMain.handle('get-version', () => {
+  return app.getVersion()
+})
+
 
 app.whenReady().then(createWindow)
