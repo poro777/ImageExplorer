@@ -1,79 +1,114 @@
 <template>
-  <div style="margin-bottom: 1em;">
-    <BInputGroup
-      prepend="Folder"
-      class="mt-3"
-    >
-      <BButton v-if="isElectron" variant="primary" @click="selectFolder">Select</BButton>
-      <BFormInput v-model="selectedFolder" placeholder="Path" @keyup.enter="addFolder"/>
-      <BButton variant="primary" @click="addFolder">Add</BButton>
-    </BInputGroup>
-  </div>
 
-  <div class="directory-block">
-    <BInputGroup
-      prepend="Search"
-      class="mt-3"
-    >
-      <BFormInput v-model="queryText" @keyup.enter="fetchResults"/>
-      
-      <BDropdown
-        split
-        @split-click="fetchResults"
-        text="Go"
-        class="me-2"
-        variant="info"
-        auto-close="outside"
-      >
-        <BFormCheckbox
-            v-for="(option, index) in queryOptions"
-            :key="index"
-            v-model="selectedQueryOptions"
-            :value="option.value"
-          >
-            {{ option.text }}
-          </BFormCheckbox>
-
-      </BDropdown>
-    </BInputGroup>
-
-    <div v-if="results.length" class="gallery" >
-      <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img.full_path)">
-        <img :src="getImageUrl(img.full_path)" />
-      </div>
-    </div>
-  </div>
-
-  <div
-    v-for="(group, dirname) in groupedImages"
-    :key="dirname"
-    class="directory-block"
+  <BNavbar
+  v-b-color-mode="'primary'"
+    variant="primary"
+    style="padding-left: 2rem; padding-right: 2rem"
   >
-    <h2 class="directory-title">📁 Folder {{ dirname }}</h2>
-    <BButton variant="primary" @click="deleteFolder(dirname)">Delete Folder</BButton>
-    <div class="gallery">
-      <div
-        v-for="(img, index) in group"
-        :key="img.id"
-        class="thumbnail"
-        @click="openModal(img.full_path)"
+    <BNavbarBrand href="#" variant="light">ImageExplorer</BNavbarBrand>
+    <BNavForm>
+      <BButton @click="openAddPage = true" variant="info" class="me-2">
+        Add Folder
+      </BButton>
+    </BNavForm>
+    <BNavForm class="ms-auto mb-2" >
+      <BInputGroup
+        prepend="Search"
+        class="mt-3"
       >
-        <!-- User full_path for dev-->
-        <img :src="getImageUrl(img.full_path)" />
+        <BFormInput v-model="queryText" style="min-width: 5em;" @keyup.enter="fetchResults"/>
+        
+        <BDropdown
+          split
+          @split-click="fetchResults"
+          text="Go"
+          class="me-2"
+          variant="info"
+          auto-close="outside"
+        >
+          <BFormCheckbox
+              v-for="(option, index) in queryOptions"
+              :key="index"
+              v-model="selectedQueryOptions"
+              :value="option.value"
+            >
+              {{ option.text }}
+          </BFormCheckbox>
+          <BButton variant="primary" @click="openSelectQueryFolder = true">Folder</BButton>
+        </BDropdown>
+       <div style="min-width: 100%; padding-left: 1em; font-size: small;" class="text-white" @click="queryFolder = ''">{{ queryFolder }}</div>
+      </BInputGroup>
+       
+    </BNavForm>
+  </BNavbar>
+
+  <BModal v-model="openAddPage" title="Add" @ok="addFolder">
+    <div style="margin-bottom: 1em;">
+      <BInputGroup
+        prepend="Path"
+        class="mt-3"
+      >
+        <BFormInput v-model="selectedFolder" placeholder="Path"/>
+        <BButton v-if="isElectron" variant="primary" @click="selectFolder">Select</BButton>
+
+      </BInputGroup>
+    </div>
+  </BModal>
+
+  <BModal v-model="openSelectQueryFolder" title="Query Folder" @ok="setQueryFolder">
+    <div style="margin-bottom: 1em;">
+      <BInputGroup
+        prepend="Path"
+        class="mt-3"
+      >
+        <BFormInput v-model="selectedFolder" placeholder="Path"/>
+        <BButton v-if="isElectron" variant="primary" @click="selectFolder">Select</BButton>
+
+      </BInputGroup>
+    </div>
+  </BModal>
+
+  <div class="page">
+    <div v-if="results.length" class="directory-block">
+      <h2 class="directory-title">Search Results</h2>
+      <div class="gallery">
+        <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img.full_path)">
+          <img :src="getImageUrl(img.full_path)" />
+        </div>
       </div>
     </div>
-  </div>
 
-  <div v-if="showModal" class="modal" @click.self="closeModal">
+    <div
+      v-for="(group, dirname) in groupedImages"
+      :key="dirname"
+      class="directory-block"
+    >
+      <h2 class="directory-title">📁 Folder {{ dirname }}</h2>
+      <BButton variant="primary" @click="deleteFolder(dirname)">Delete Folder</BButton>
+      <div class="gallery">
+        <div
+          v-for="(img, index) in group"
+          :key="img.id"
+          class="thumbnail"
+          @click="openModal(img.full_path)"
+        >
+          <!-- User full_path for dev-->
+          <img :src="getImageUrl(img.full_path)" />
+        </div>
+      </div>
+    </div>
 
-    <img :src="getImageUrl(currentImage)" class="modal-image" />
-    <BButton variant="primary" @click="openInfo" class="info-btn" size="sm" pill>!</BButton>
-    <BButton variant="primary" @click="closeModal" class="close-btn" size="sm" pill>x</BButton>
-    
-    <BModal v-model="showInfo" title="Info" style="z-index:101"> 
-      <p>Image Path: {{ currentImage }}</p>
-    </BModal>
-    
+    <div v-if="showModal" class="modal" @click.self="closeModal">
+
+      <img :src="getImageUrl(currentImage)" class="modal-image" />
+      <BButton variant="primary" @click="openInfo" class="info-btn" size="sm" pill>!</BButton>
+      <BButton variant="primary" @click="closeModal" class="close-btn" size="sm" pill>x</BButton>
+      
+      <BModal v-model="showInfo" title="Info" style="z-index:101"> 
+        <p>Image Path: {{ currentImage }}</p>
+      </BModal>
+      
+    </div>
   </div>
 </template>
 
@@ -92,8 +127,10 @@ const queryText = ref('')
 const selectedFolder = ref('')
 const results = ref([])
 const currentImage = ref('')
-
+const openAddPage = ref(false);
 const isElectron = ref(false);
+const queryFolder = ref('')
+const openSelectQueryFolder = ref(false);
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -169,7 +206,15 @@ const addFolder = async () => {
     params: { path: selectedFolder.value }
   })
   alert(`Folder added: ${selectedFolder.value}`)
+  selectedFolder = '' // Reset the input field
 }
+
+const setQueryFolder = async () => {
+  if (!selectedFolder) return
+  queryFolder.value = selectedFolder.value
+  selectedFolder = '' // Reset the input field
+}
+
 
 
 const deleteFolder = async (folderPath) => {
@@ -187,7 +232,8 @@ const fetchResults = async () => {
         text: queryText.value, 
         use_text_embed : selectedQueryOptions.value.includes('use_text_embed'), 
         use_bm25 : selectedQueryOptions.value.includes('use_bm25'), 
-        use_joint_embed : selectedQueryOptions.value.includes('use_joint_embed')
+        use_joint_embed : selectedQueryOptions.value.includes('use_joint_embed'),
+        path: queryFolder.value == '' ? null : queryFolder.value
       }
     })
     results.value = res.data
