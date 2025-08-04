@@ -82,25 +82,31 @@
       </div>
     </div>
 
+    <b-pagination
+            v-model="currentPage"
+            :total-rows="groupCount"
+            :per-page="perPage"
+            align="center"
+    />
+
     <div
-      v-for="(group, dirname) in groupedImages"
-      :key="dirname"
-      class="directory-block"
+      v-for="(group, index) in groupedImages.slice((currentPage - 1) * perPage, currentPage * perPage)"
+      :key="index" class="directory-block"
     >
       <div style="display: flex; align-items: center;">
-      <BButton variant="light" @click="queryFolder=dirname">📁</BButton>
-      <h2 class="directory-title" style="margin: 0;">Folder {{ dirname }}</h2>
+      <BButton variant="light" @click="queryFolder=group.dirname">📁</BButton>
+      <h2 class="directory-title" style="margin: 0;">Folder {{ group.dirname }}</h2>
       </div>
-      <BButton variant="danger" @click="deleteFolder(dirname)">Delete Folder</BButton>
+      <BButton variant="danger" @click="deleteFolder(group.dirname)">Delete Folder</BButton>
       <div class="gallery">
         <div
-          v-for="(img, index) in group"
+          v-for="(img, index) in group.list"
           :key="img.id"
           class="thumbnail"
           @click="openModal(img.full_path)"
         >
-          <!-- User full_path for dev-->
-          <img :src="getImageUrl(img.full_path)" />
+          <!-- Use full_path for dev-->
+          <BImg lazy :src="getImageUrl(img.full_path)"></BImg>
         </div>
       </div>
     </div>
@@ -136,8 +142,11 @@ const results = ref([])
 const currentImage = ref('')
 const openAddPage = ref(false);
 const isElectron = ref(false);
-const queryFolder = ref('')
-const openSelectQueryFolder = ref(false);
+const queryFolder = ref('');
+const openSelectQueryFolder = ref(false)
+const perPage = ref(2)
+const currentPage = ref(1)
+const groupCount = ref(0)
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -166,9 +175,9 @@ const groupedImages = computed(() => {
     }
     groups[dirPath].push(img)
   }
-  return groups
+  groupCount.value = Object.keys(groups).length
+  return Object.entries(groups).map(([dirname, list]) => ({ dirname, list }))
 })
-
 
 const openModal = (full_path) => {
   currentImage.value = full_path
@@ -322,6 +331,8 @@ const fetchResults = async () => {
   padding: 1rem;
   margin-bottom: 2rem;
   background-color: #f9f9f9;
+  overflow: auto;
+  max-height: 450px;
 }
 
 .directory-title {
