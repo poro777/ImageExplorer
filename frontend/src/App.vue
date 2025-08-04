@@ -1,17 +1,17 @@
 <template>
 
   <BNavbar
-  v-b-color-mode="'primary'"
+    v-b-color-mode="'light'"
     variant="primary"
     style="padding-left: 2rem; padding-right: 2rem"
   >
-    <BNavbarBrand href="#" variant="light">ImageExplorer</BNavbarBrand>
-    <BNavForm>
-      <BButton @click="openAddPage = true" variant="info" class="me-2">
-        Add Folder
-      </BButton>
-    </BNavForm>
-    <BNavForm class="ms-auto mb-2" >
+    <BNavbarBrand href="#" variant="light" style="margin-right: 3rem;">ImageExplorer</BNavbarBrand>
+    <BButton @click="openAddPage = true" variant="info" class="me-2">
+      Add Folder
+    </BButton>
+
+    <BNavForm class="ms-auto mb-2">
+      <div>
       <BInputGroup
         prepend="Search"
         class="mt-3"
@@ -31,15 +31,19 @@
               :key="index"
               v-model="selectedQueryOptions"
               :value="option.value"
+              switch
             >
               {{ option.text }}
           </BFormCheckbox>
-          <BButton variant="primary" @click="openSelectQueryFolder = true">Folder</BButton>
+
+          <BButton variant="outline-primary" @click="openSelectQueryFolder = true">📁</BButton>
+
         </BDropdown>
-       <div style="min-width: 100%; padding-left: 1em; font-size: small;" class="text-white" @click="queryFolder = ''">{{ queryFolder }}</div>
       </BInputGroup>
-       
+      <div class="text-white" style="text-align:right; cursor: pointer;" @click="queryFolder = ''">{{ queryFolder == ""? "All folders": queryFolder }}</div>
+      </div>
     </BNavForm>
+
   </BNavbar>
 
   <BModal v-model="openAddPage" title="Add" @ok="addFolder">
@@ -83,8 +87,11 @@
       :key="dirname"
       class="directory-block"
     >
-      <h2 class="directory-title">📁 Folder {{ dirname }}</h2>
-      <BButton variant="primary" @click="deleteFolder(dirname)">Delete Folder</BButton>
+      <div style="display: flex; align-items: center;">
+      <BButton variant="light" @click="queryFolder=dirname">📁</BButton>
+      <h2 class="directory-title" style="margin: 0;">Folder {{ dirname }}</h2>
+      </div>
+      <BButton variant="danger" @click="deleteFolder(dirname)">Delete Folder</BButton>
       <div class="gallery">
         <div
           v-for="(img, index) in group"
@@ -206,13 +213,13 @@ const addFolder = async () => {
     params: { path: selectedFolder.value }
   })
   alert(`Folder added: ${selectedFolder.value}`)
-  selectedFolder = '' // Reset the input field
+  selectedFolder.value = '' // Reset the input field
 }
 
 const setQueryFolder = async () => {
   if (!selectedFolder) return
   queryFolder.value = selectedFolder.value
-  selectedFolder = '' // Reset the input field
+  selectedFolder.value = '' // Reset the input field
 }
 
 
@@ -227,6 +234,10 @@ const deleteFolder = async (folderPath) => {
 
 const fetchResults = async () => {
   try {
+    if (!queryText.value.trim()) {
+      results.value = []
+      return
+    }
     const res = await axios.get('http://127.0.0.1:8000/api/query', {
       params: { 
         text: queryText.value, 
@@ -315,7 +326,6 @@ const fetchResults = async () => {
 
 .directory-title {
   font-size: 1.2rem;
-  margin-bottom: 0.75rem;
   color: #333;
   font-weight: bold;
   word-break: break-all;
