@@ -77,7 +77,8 @@
       <h2 class="directory-title">Search Results</h2>
       <div class="gallery">
         <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img.full_path)">
-          <img :src="getImageUrl(img.full_path)" />
+          <BImg v-if="img.thumbnail_path != null" lazy :src="getThumbnailUrl(img.thumbnail_path)"></BImg>
+          <BImg v-else lazy :src="getImageUrl(img.full_path)"></BImg>
         </div>
       </div>
     </div>
@@ -106,7 +107,8 @@
           @click="openModal(img.full_path)"
         >
           <!-- Use full_path for dev-->
-          <BImg lazy :src="getImageUrl(img.full_path)"></BImg>
+          <BImg v-if="img.thumbnail_path != null" lazy :src="getThumbnailUrl(img.thumbnail_path)"></BImg>
+          <BImg v-else lazy :src="getImageUrl(img.full_path)"></BImg>
         </div>
       </div>
     </div>
@@ -144,7 +146,7 @@ const openAddPage = ref(false);
 const isElectron = ref(false);
 const queryFolder = ref('');
 const openSelectQueryFolder = ref(false)
-const perPage = ref(2)
+const perPage = ref(4)
 const currentPage = ref(1)
 const groupCount = ref(0)
 
@@ -163,6 +165,7 @@ onMounted(() => {
 });
 
 const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
+const getThumbnailUrl = (path) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
 
 // Group by directory_id
 const groupedImages = computed(() => {

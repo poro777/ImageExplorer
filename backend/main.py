@@ -9,6 +9,7 @@ from database import models
 from database import database
 import indexer
 import watcher
+from fastapi.staticfiles import StaticFiles
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +43,8 @@ app.add_middleware(
     allow_methods=["*"],               # GET, POST, PUT, DELETE, etc
     allow_headers=["*"],               # Allow all headers
 )
+
+app.mount("/thumbnail", StaticFiles(directory=file_api.THUMBBAIL_DIR.as_posix()), name="thumbnail")
 
 @app.get("/")
 def read_root():
