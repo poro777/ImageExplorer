@@ -1,6 +1,6 @@
 # ImageExplorer
 
-This repository contains the backend service for the ImageExplorer application.
+This repository contains the backend and frontend services for the ImageExplorer application.
 
 ## What is ImageExplorer?
 
@@ -20,6 +20,7 @@ Before you begin, ensure you have the following installed on your system:
 
 - **Python**: The required version is specified in the `backend/.python-version` file.
 - **uv**: A fast Python package installer and resolver from Astral.
+- **Node.js**: Recommended to use the latest LTS version.
 - **Docker** and **Docker Compose**: To run required services like Milvus in isolated containers.
 
 ## Development Setup
@@ -93,6 +94,28 @@ uv run uvicorn main:app --reload
 ```
 
 This command starts the server with auto-reload enabled. The application will be accessible at `http://localhost:8000`, and the interactive API documentation will be available at `http://localhost:8000/docs`.
+
+### 7. Run the Frontend
+
+To get the frontend application up and running, follow these steps:
+
+1.  **Install Dependencies**
+
+    Open a terminal, navigate to the frontend project's root directory, and run the following command to install the necessary packages:
+
+    ```sh
+    npm install
+    ```
+
+2.  **Launch the Application**
+
+    After the dependencies have been successfully installed, you can start the Electron application with this command:
+
+    ```sh
+    npm run start
+    ```
+
+    The Vue development server will be available at `http://localhost:5173`.
 
 ## Running Tests
 
