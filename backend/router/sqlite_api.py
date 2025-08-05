@@ -20,6 +20,7 @@ router = APIRouter(
 )
 
 
+
 @router.get("/")
 def read_images(session: Session = Depends(get_session)):
     images = session.exec(select(Image)).all()
@@ -74,7 +75,7 @@ def inesrt_or_update_image(file: str, session: Session):
 
     if image is None:
         pil_image = loadImage(file)
-        thumbnail_path = create_thumbnail(pil_image)
+        thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
         image = Image(directory_id=directory.id, filename=name, 
                   width=pil_image.width, height=pil_image.height, 
                   last_modified=datetime.fromtimestamp(file.stat().st_mtime,),
@@ -86,7 +87,7 @@ def inesrt_or_update_image(file: str, session: Session):
             return None
         
         pil_image = loadImage(file)
-        thumbnail_path = create_thumbnail(pil_image)
+        thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
         image.width=pil_image.width
         image.height=pil_image.height
         image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
