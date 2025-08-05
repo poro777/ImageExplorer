@@ -16,9 +16,7 @@ from PIL.ImageFile import ImageFile
 
 
 @pytest.mark.timeout(60)
-def test_watchdog_add_api(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-    
+def test_watchdog_add_api(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -45,8 +43,6 @@ def test_watchdog_add_api(client: TestClient, session: Session, fs_watcher: Watc
 
 @pytest.mark.timeout(60)
 def test_watchdog_remove(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
     
@@ -79,9 +75,7 @@ def test_watchdog_remove(client: TestClient, session: Session, fs_watcher: Watch
 
 
 @pytest.mark.timeout(60)
-def test_watchdog_remove_and_clear(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-    
+def test_watchdog_remove_and_clear(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
     

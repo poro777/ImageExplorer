@@ -44,7 +44,7 @@ app.add_middleware(
     allow_headers=["*"],               # Allow all headers
 )
 
-app.mount("/thumbnail", StaticFiles(directory=file_api.THUMBBAIL_DIR.as_posix()), name="thumbnail")
+app.mount("/thumbnail", StaticFiles(directory=file_api.THUMBNAIL_DIR.as_posix()), name="thumbnail")
 
 @app.get("/")
 def read_root():

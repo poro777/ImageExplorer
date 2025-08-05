@@ -18,7 +18,7 @@ router = APIRouter(
 )
 
 BASE_DIR = Path("images").resolve()
-THUMBBAIL_DIR = BASE_DIR / "thumbnails"
+THUMBNAIL_DIR = BASE_DIR / "thumbnails"
 ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
 
 def get_unique_filename(folder: Path, ext=".jpg") -> Path | None:
@@ -57,17 +57,17 @@ def getFolderPath(path: str | None) -> Path | None:
         return folder
 
 def create_thumbnail(image: ImageFile, ext: str, size = 256) -> Path:
-    if not THUMBBAIL_DIR.exists():
-        THUMBBAIL_DIR.mkdir(parents=True, exist_ok=True)
+    if not THUMBNAIL_DIR.exists():
+        THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
 
     img = image.copy()
     img.thumbnail((size, size))
-    thumbnail_path = get_unique_filename(THUMBBAIL_DIR, ext=ext)
+    thumbnail_path = get_unique_filename(THUMBNAIL_DIR, ext=ext)
     img.save(thumbnail_path)
     return thumbnail_path
 
 def delete_all_thumbnails():
-    for thumbnail in THUMBBAIL_DIR.glob("*"):
+    for thumbnail in THUMBNAIL_DIR.glob("*"):
         if thumbnail.is_file():
             thumbnail.unlink(missing_ok=True)
 

@@ -25,7 +25,6 @@ def test_query_images(client: TestClient, session: Session):
         assert len(data) >= 2 # at least two result should be returned
         assert text in data[0]["filename"] and text in data[1]["filename"]
 
-    clear_vector_db()
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_HUSKY_IMAGE_2, session)
     inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
@@ -68,7 +67,6 @@ def test_query_images_within_folder(client: TestClient, session: Session, tmp_pa
         
         return data
 
-    clear_vector_db()
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_HUSKY_IMAGE_2, session)
     inesrt_or_update_image(PATH_ROBOT_IMAGE, session)

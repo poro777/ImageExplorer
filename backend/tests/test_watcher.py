@@ -16,9 +16,7 @@ from PIL.ImageFile import ImageFile
 
 
 @pytest.mark.timeout(60)
-def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-    
+def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -47,8 +45,6 @@ def test_watchdog_create(client: TestClient, session: Session, fs_watcher: Watch
 
 @pytest.mark.timeout(60)
 def test_watchdog_move(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -106,8 +102,6 @@ def test_watchdog_move(client: TestClient, session: Session, fs_watcher: Watchdo
     assert len(response.json()) == len(images)
 
 def test_watchdog_delete(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-
     base = tmp_images_path
 
     fs_watcher.add(base)
@@ -140,8 +134,6 @@ def test_watchdog_delete(client: TestClient, session: Session, fs_watcher: Watch
 def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
     from io import BytesIO
 
-    clear_vector_db()
-
     base = tmp_images_path
 
     fs_watcher.add(base)
@@ -169,7 +161,6 @@ def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: Watch
 
 def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
     from io import BytesIO
-    clear_vector_db()
 
     base = tmp_images_path
 
