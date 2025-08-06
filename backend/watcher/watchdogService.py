@@ -13,6 +13,7 @@ import database.database as db
 from enum import Enum
 
 from router.file_api import ALLOWED_EXTENSIONS
+import router.file_api
 from router.sqlite_api import inesrt_or_update_image, delete_image, move_image_path
 from database.utils import get_all_listening_paths, query_images_by_path
 
@@ -338,7 +339,9 @@ class WatchdogService:
             return False
         if path in self.watches:
             return True
-        
+        if path == router.file_api.THUMBNAIL_DIR:
+            print(f"[watchdog] Skip watching thumbnail directory: {path}")
+            return False
         print(f"[watchdog] Watching {path}")
         #self.observer.stop()
         watch = self.observer.schedule(self.handler, str(path), recursive=False)

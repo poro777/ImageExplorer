@@ -76,9 +76,9 @@ def fs_watcher_fixture(monkeypatch,session: Session):
     fs_watcher.stop()
 
 @pytest.fixture(autouse=True)
-def tmp_thumbnail(monkeypatch):
+def tmp_thumbnail(tmp_path: Path):
     original = router.file_api.THUMBNAIL_DIR
-    router.file_api.THUMBNAIL_DIR = router.file_api.BASE_DIR / "tmp_thumbnails"
+    router.file_api.THUMBNAIL_DIR = tmp_path / "tmp_thumbnails"
     yield
     router.file_api.delete_all_thumbnails()
     router.file_api.THUMBNAIL_DIR = original  # restore original after session
