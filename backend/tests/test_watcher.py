@@ -8,6 +8,7 @@ from watcher.watchdogService import *
 
 from router.sqlite_api import delete_image, inesrt_or_update_image
 from router.file_api import getPathOfImageFile
+import router.file_api
 
 from datetime import datetime, timedelta
 
@@ -16,9 +17,7 @@ from PIL.ImageFile import ImageFile
 
 
 @pytest.mark.timeout(60)
-def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-    
+def test_watchdog_create(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):    
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -34,6 +33,8 @@ def test_watchdog_create(client: TestClient, session: Session, fs_watcher: Watch
     data = response.json()
     assert response.status_code == 200
     assert len(data) == 2
+    assert data[0]["thumbnail_path"] is not None
+    assert Path(router.file_api.THUMBNAIL_DIR / data[0]["thumbnail_path"]).exists()
 
     response = client.get("/image/lookup", params={"file": (subfolder / HUSKY_IMAGE).as_posix()})
     data = response.json()
@@ -47,8 +48,6 @@ def test_watchdog_create(client: TestClient, session: Session, fs_watcher: Watch
 
 @pytest.mark.timeout(60)
 def test_watchdog_move(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-
     base = tmp_images_path
     subfolder = tmp_images_path / SUBFOLDER
 
@@ -65,6 +64,8 @@ def test_watchdog_move(client: TestClient, session: Session, fs_watcher: Watchdo
 
     response = client.get("/image")
     data = response.json()
+    thumbnail_paths = {}
+    
     assert response.status_code == 200
     assert len(data) == len(images)
 
@@ -72,6 +73,13 @@ def test_watchdog_move(client: TestClient, session: Session, fs_watcher: Watchdo
         file = base / image
         response = client.get("/image/lookup", params={"file": file.as_posix()})
         assert response.status_code == 200
+
+        data = response.json()
+        thumbnail_path = data["thumbnail_path"]
+        assert thumbnail_path is not None
+        assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
+        thumbnail_paths[image] = thumbnail_path
+        
 
     response = client.get("api/list", params={"path": base.as_posix()})
     assert response.status_code == 200
@@ -94,6 +102,9 @@ def test_watchdog_move(client: TestClient, session: Session, fs_watcher: Watchdo
         moved_file = subfolder / image
         response = client.get("/image/lookup", params={"file": moved_file.as_posix()})
         assert response.status_code == 200
+        data = response.json()
+        assert thumbnail_paths[image] == data["thumbnail_path"]
+        assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
 
     wait_before_read_vecdb()
 
@@ -106,8 +117,6 @@ def test_watchdog_move(client: TestClient, session: Session, fs_watcher: Watchdo
     assert len(response.json()) == len(images)
 
 def test_watchdog_delete(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
-    clear_vector_db()
-
     base = tmp_images_path
 
     fs_watcher.add(base)
@@ -137,10 +146,11 @@ def test_watchdog_delete(client: TestClient, session: Session, fs_watcher: Watch
     assert len(data) == 1
     assert data[0]["full_path"] == (base / ROBOT_IMAGE).as_posix()
 
+    assert Path(router.file_api.THUMBNAIL_DIR /  data[0]["thumbnail_path"]).exists()
+    assert len(list(router.file_api.THUMBNAIL_DIR.glob("*"))) == 1  # one thumbnail should remain
+
 def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
     from io import BytesIO
-
-    clear_vector_db()
 
     base = tmp_images_path
 
@@ -153,10 +163,14 @@ def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: Watch
 
     response = client.get("/image/lookup", params={"file": file.as_posix()})
     assert response.status_code == 200
+    thubnail_path = response.json()["thumbnail_path"]
+    assert Path(router.file_api.THUMBNAIL_DIR / thubnail_path).exists()
 
     response = client.get("/image/lookup", params={"file": new_file.as_posix()})
     assert response.status_code == 404
     
+    
+
     rename_file(base, HUSKY_IMAGE, new_file.name)
 
     wait_watchdog_done()
@@ -166,10 +180,11 @@ def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: Watch
 
     response = client.get("/image/lookup", params={"file": new_file.as_posix()})
     assert response.status_code == 200
+    assert response.json()["thumbnail_path"] == thubnail_path
+    assert Path(router.file_api.THUMBNAIL_DIR / thubnail_path).exists()
 
 def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
     from io import BytesIO
-    clear_vector_db()
 
     base = tmp_images_path
 
@@ -177,6 +192,12 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
     file = base / HUSKY_IMAGE
     inesrt_or_update_image(file.as_posix(), session)
     wait_before_read_vecdb()
+
+    response = client.get("/image/lookup", params={"file": file.as_posix()})
+    assert response.status_code == 200
+    data = response.json()
+    thumbnail_path = data["thumbnail_path"]
+    assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
 
     new_file = base / ("renamed_" + HUSKY_IMAGE) # rename to new file to prevent genai cache
     
@@ -191,6 +212,11 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
 
     response = client.get("/image/lookup", params={"file": new_file.as_posix()})
     assert response.status_code == 200
+    data = response.json()
+    new_thumbnail_path = data["thumbnail_path"]
+    assert new_thumbnail_path != thumbnail_path
+    assert Path(router.file_api.THUMBNAIL_DIR / new_thumbnail_path).exists()
+    assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists() == False  # old thumbnail should be deleted
 
     wait_before_read_vecdb()
 

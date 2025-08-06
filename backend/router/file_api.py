@@ -1,3 +1,6 @@
+import os
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -8,13 +11,25 @@ from database.models import Image
 from database.database import get_session
 from PIL import Image as ImageLoader
 from PIL import UnidentifiedImageError
+from PIL.ImageFile import ImageFile
 
 router = APIRouter(
     tags=["file"],
 )
 
 BASE_DIR = Path("images").resolve()
+THUMBNAIL_DIR = BASE_DIR / "thumbnails"
 ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
+
+def get_unique_filename(folder: Path, ext=".jpg") -> Path | None:
+    attempts = 1000
+    while attempts > 0:
+        attempts -= 1
+        name = f"{uuid.uuid4().hex}{ext}"
+        path = folder / name
+        if not path.exists():
+            return path
+    return None
 
 def is_image(path: Path) -> bool:
     try:
@@ -40,7 +55,50 @@ def getFolderPath(path: str | None) -> Path | None:
         return None
     else:
         return folder
+
+def create_thumbnail(image: ImageFile, ext: str, size = 256) -> Path:
+    if not THUMBNAIL_DIR.exists():
+        THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
+
+    img = image.copy()
+    img.thumbnail((size, size))
+    thumbnail_path = get_unique_filename(THUMBNAIL_DIR, ext=ext)
+    img.save(thumbnail_path)
+    return thumbnail_path
+
+def delete_all_thumbnails():
+    for thumbnail in THUMBNAIL_DIR.glob("*"):
+        if thumbnail.is_file():
+            thumbnail.unlink(missing_ok=True)
+
+@router.get("/thumbnail/init")
+def init_thumbnail(session: Session = Depends(get_session)):
+
+    statement = select(Image).where(Image.thumbnail_path == None)
+    results = session.exec(statement).all()
+
+    for image in results:
+        # Open an image
+        pil_image = ImageLoader.open(image.full_path)
+        thumbnail_path = create_thumbnail(pil_image, ext=Path(image.full_path).suffix)
+        image.thumbnail_path = thumbnail_path.name
     
+    session.commit()
+
+    return f'{len(results)} thumbnails created'
+
+@router.get("/thumbnail/delete")
+def init_thumbnail(session: Session = Depends(get_session)):
+    images = session.exec(select(Image)).all()
+    for image in images:
+        image.thumbnail_path = None
+    session.commit()
+
+    # Remove all thumbnail files
+    delete_all_thumbnails()
+
+    return f'{len(images)} thumbnails removed'
+
 @router.get("/file")
 def get_image(path: str, session: Session = Depends(get_session)):
     image_path = getPathOfImageFile(path)

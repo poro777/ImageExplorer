@@ -16,6 +16,8 @@ indexer.COLLECTION_NAME = "test_collection"
 
 from main import app
 import watcher
+
+import router.file_api
 indexer.create_embed_db(indexer.COLLECTION_NAME)
 
 indexer.genai_api.delete_uploaded_files()
@@ -35,8 +37,12 @@ def session_fixture(monkeypatch):
     with Session(test_engine) as session:
         yield session
 
+@pytest.fixture(name="db_session")
+def vector_db_fixture():
+    clear_vector_db()
+
 @pytest.fixture(name="client")  
-def client_fixture(session: Session):  
+def client_fixture(session: Session, db_session):  
     def get_session_override():  
         return session
 
@@ -68,3 +74,12 @@ def fs_watcher_fixture(monkeypatch,session: Session):
     fs_watcher.start()
     yield fs_watcher
     fs_watcher.stop()
+
+@pytest.fixture(autouse=True)
+def tmp_thumbnail(tmp_path: Path):
+    original = router.file_api.THUMBNAIL_DIR
+    router.file_api.THUMBNAIL_DIR = tmp_path / "tmp_thumbnails"
+    yield
+    router.file_api.delete_all_thumbnails()
+    router.file_api.THUMBNAIL_DIR = original  # restore original after session
+

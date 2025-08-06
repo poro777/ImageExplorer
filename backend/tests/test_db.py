@@ -13,6 +13,7 @@ import pytest
 import indexer
 
 from router.file_api import getPathOfImageFile, BASE_DIR
+import router.file_api
 
 from PIL import Image as ImageLoader
 
@@ -61,7 +62,6 @@ def test_root(client: TestClient):
     assert data["Good"] == "v8"  
 
 def test_empyt_database(client: TestClient):
-    clear_vector_db()
     wait_before_read_vecdb()
     # sqlite db
     response = client.get("/image")
@@ -98,8 +98,9 @@ def test_add_images(client: TestClient):
         assert data["width"] == test_image.width
         assert data["height"] == test_image.height
         assert data["last_modified"] == datetime.fromtimestamp(test_image_path.stat().st_mtime).isoformat()
+        assert data["thumbnail_path"] is not None
+        assert Path(router.file_api.THUMBNAIL_DIR / data["thumbnail_path"]).exists()
 
-    clear_vector_db()
     add_image(1, PATH_HUSKY_IMAGE)
     add_image(2, PATH_ROBOT_IMAGE_2)
 
@@ -121,7 +122,6 @@ def test_add_images(client: TestClient):
     assert "robot" in data['2']
 
 def test_add_not_existing_image(client: TestClient):
-    clear_vector_db()
     response = client.post("/image/create", params={"file": "not_existing.jpg"})
     assert response.status_code == 404
 
@@ -151,7 +151,6 @@ def test_add_not_existing_image(client: TestClient):
 
 
 def test_lookup_image(client: TestClient, session: Session):
-    clear_vector_db()
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_ROBOT_IMAGE_2, session)
 
@@ -191,7 +190,6 @@ def test_lookup_image(client: TestClient, session: Session):
 
 
 def test_delete_images(client: TestClient, session: Session):
-    clear_vector_db()
     inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     
@@ -208,6 +206,11 @@ def test_delete_images(client: TestClient, session: Session):
     assert response.status_code == 200
     assert len(data) == 1
     assert data[0]["id"] == 2 # husky should remain
+    assert data[0]["thumbnail_path"] is not None
+
+    # check if the thumbnail is deleted
+    thumbnail_path = router.file_api.THUMBNAIL_DIR / data[0]["thumbnail_path"]
+    assert thumbnail_path.exists()
 
     # vector db
     response = client.get("/api/list")
@@ -227,6 +230,8 @@ def test_delete_images(client: TestClient, session: Session):
     data = response.json()
     assert response.status_code == 200
     assert len(data) == 0
+    assert len(list(router.file_api.THUMBNAIL_DIR.glob("*"))) == 0  # all thumbnails should be deleted
+
     # vector db
     response = client.get("/api/list")
     data = response.json()
@@ -240,7 +245,6 @@ def test_delete_images(client: TestClient, session: Session):
 
 
 def test_delete_all_images(client: TestClient, session: Session):
-    clear_vector_db()
     inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_FLOWER_IMAGE, session)
@@ -254,6 +258,8 @@ def test_delete_all_images(client: TestClient, session: Session):
     data = response.json()
     assert response.status_code == 200
     assert len(data) == 0
+    assert len(list(router.file_api.THUMBNAIL_DIR.glob("*"))) == 0  # all thumbnails should be deleted
+
     # vector db
     response = client.get("/api/list")
     data = response.json()
@@ -265,7 +271,6 @@ def test_delete_all_images(client: TestClient, session: Session):
     assert response.status_code == 200
 
 def test_list_vecdb(client: TestClient, session: Session, tmp_path: Path):
-    clear_vector_db()
 
     response = client.get("/api/list")
     data = response.json()
