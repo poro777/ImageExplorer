@@ -44,6 +44,7 @@ app.add_middleware(
     allow_headers=["*"],               # Allow all headers
 )
 
+file_api.THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/thumbnail", StaticFiles(directory=file_api.THUMBNAIL_DIR.as_posix()), name="thumbnail")
 
 @app.get("/")
