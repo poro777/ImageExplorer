@@ -14,6 +14,13 @@ ImageExplorer is a self-hosted application designed to help you search and explo
 
 This guide will walk you through setting up the project for local development and testing.
 
+## ⚠️ Privacy & Data Processing Warning
+
+When using ImageExplorer, **images from your monitored folders will be uploaded to a third-party AI provider** to generate descriptions.  
+These uploads are necessary for the AI-powered features to work, but they may expose your images to external processing systems outside your local environment.
+
+If your images contain sensitive, private, or confidential information, **do not enable monitoring on those folders**.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
