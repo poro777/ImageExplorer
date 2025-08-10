@@ -24,6 +24,11 @@ def test_watchdog_add_api(client: TestClient, session: Session, fs_watcher: Watc
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 3, "Expected 3 images in the base folder"
+    firstImage = data[0]
+    assert firstImage["thumbnail_path"] is not None
+    thumbnail_path = Path(firstImage["thumbnail_path"])
+    assert thumbnail_path.is_absolute() == False
+    assert (router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
 
     response = client.get("/watcher/listening")
     assert response.status_code == 200
@@ -85,6 +90,11 @@ def test_watchdog_remove_and_clear(client: TestClient, session: Session, fs_watc
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 3, "Expected 3 images in the base folder"
+    firstImage = data[0]
+    assert firstImage["thumbnail_path"] is not None
+    thumbnail_path = Path(firstImage["thumbnail_path"])
+    assert (router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
+    
 
     response = client.get("/watcher/listening")
     assert response.status_code == 200
@@ -110,3 +120,5 @@ def test_watchdog_remove_and_clear(client: TestClient, session: Session, fs_watc
     response = client.get("/image/folder", params={"path": base.as_posix()})
     assert response.status_code == 200
     assert len(response.json()) == 0, "Expected no images in the base folder after removal"
+
+    assert not (router.file_api.THUMBNAIL_DIR / thumbnail_path).exists(), "Thumbnail should be deleted after removing images"

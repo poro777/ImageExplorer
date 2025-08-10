@@ -12,6 +12,7 @@ from database import database
 import indexer
 
 from router.file_api import getFolderPath, getPathOfImageFile, create_thumbnail, delete_all_thumbnails
+import router.file_api as file_api
 from datetime import datetime
 
 router = APIRouter(
@@ -79,7 +80,7 @@ def inesrt_or_update_image(file: str, session: Session):
         image = Image(directory_id=directory.id, filename=name, 
                   width=pil_image.width, height=pil_image.height, 
                   last_modified=datetime.fromtimestamp(file.stat().st_mtime,),
-                  full_path=file.as_posix(), thumbnail_path=thumbnail_path.as_posix())
+                  full_path=file.as_posix(), thumbnail_path=thumbnail_path.name)
         session.add(image)
     else:
         if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file.stat().st_mtime):
@@ -92,8 +93,8 @@ def inesrt_or_update_image(file: str, session: Session):
         image.height=pil_image.height
         image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
         if image.thumbnail_path is not None:
-            Path(image.thumbnail_path).unlink(missing_ok=True)
-        image.thumbnail_path = thumbnail_path.as_posix()
+            Path(file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
+        image.thumbnail_path = thumbnail_path.name
 
     try:
         session.commit()
@@ -133,7 +134,7 @@ def delete_image(file: Path, session: Session):
     try:
         image = session.get(Image, id)
         if image.thumbnail_path is not None:
-            Path(image.thumbnail_path).unlink(missing_ok=True)
+            (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
         session.delete(image)
         session.commit()
         return True
@@ -152,7 +153,7 @@ def delete_image_by_id(image_id: int, session: Session = Depends(get_session)):
     if successed == False:
         raise HTTPException(status_code=500, detail="Vector db delete failed")
     if image.thumbnail_path is not None:
-        Path(image.thumbnail_path).unlink(missing_ok=True)
+        (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
     session.delete(image)
     session.commit()
     
