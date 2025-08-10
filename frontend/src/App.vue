@@ -9,7 +9,7 @@
     <BButton @click="openAddPage = true" variant="info" class="me-2">
       Add Folder
     </BButton>
-
+    {{ adder.progress }}
     <BNavForm class="ms-auto mb-2">
       <div>
       <BInputGroup
@@ -131,6 +131,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import {folderAdder} from './watcher'
 
 const images = ref([])
 const showModal = ref(false)
@@ -149,6 +150,8 @@ const openSelectQueryFolder = ref(false)
 const perPage = ref(4)
 const currentPage = ref(1)
 const groupCount = ref(0)
+
+let adder = folderAdder()
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -221,6 +224,9 @@ const selectFolder = async () => {
 const addFolder = async () => {
   if (!selectedFolder) return
 
+  adder.start(selectedFolder.value)
+ 
+  return;
   await axios.post('http://127.0.0.1:8000/watcher/add', null, {
     params: { path: selectedFolder.value }
   })
