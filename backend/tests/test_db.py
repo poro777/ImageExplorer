@@ -99,7 +99,9 @@ def test_add_images(client: TestClient):
         assert data["height"] == test_image.height
         assert data["last_modified"] == datetime.fromtimestamp(test_image_path.stat().st_mtime).isoformat()
         assert data["thumbnail_path"] is not None
-        assert Path(router.file_api.THUMBNAIL_DIR / data["thumbnail_path"]).exists()
+        thumbnail_path = Path(data["thumbnail_path"])
+        assert thumbnail_path.is_absolute() == False # only base name should be returned
+        assert (router.file_api.THUMBNAIL_DIR / data["thumbnail_path"]).exists()
 
     add_image(1, PATH_HUSKY_IMAGE)
     add_image(2, PATH_ROBOT_IMAGE_2)
@@ -120,6 +122,40 @@ def test_add_images(client: TestClient):
     assert len(data) == 2
     assert "husky" in data['1']
     assert "robot" in data['2']
+
+def test_update_images(client: TestClient, session: Session, tmp_images_path: Path):
+    inesrt_or_update_image((tmp_images_path / PATH_HUSKY_IMAGE).as_posix(), session)
+    rename_file(tmp_images_path / SUBFOLDER, HUSKY_IMAGE_2, HUSKY_IMAGE)
+    
+
+    response = client.get("/image/lookup", params={"file": (tmp_images_path / PATH_HUSKY_IMAGE).resolve()})
+    assert response.status_code == 200
+    data = response.json()
+    id = data["id"]
+    last_modified = data["last_modified"]
+    thumbnail_path = Path(data["thumbnail_path"])
+    assert data["filename"] == HUSKY_IMAGE
+    assert data["full_path"] == (tmp_images_path / PATH_HUSKY_IMAGE).resolve().as_posix()
+    assert thumbnail_path.is_absolute() == False  # only base name should be returned
+    assert (router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
+
+    replace_file(tmp_images_path / SUBFOLDER, tmp_images_path, HUSKY_IMAGE)
+    inesrt_or_update_image((tmp_images_path / PATH_HUSKY_IMAGE).as_posix(), session)
+
+    response = client.get("/image/lookup", params={"file": (tmp_images_path / PATH_HUSKY_IMAGE).resolve()})
+    assert response.status_code == 200
+    data = response.json()
+    assert id == data["id"]
+    assert last_modified != data["last_modified"]
+
+    assert data["filename"] == HUSKY_IMAGE
+    assert data["full_path"] == (tmp_images_path / PATH_HUSKY_IMAGE).resolve().as_posix()
+
+    new_thumbnail_path = Path(data["thumbnail_path"])
+    assert new_thumbnail_path != thumbnail_path
+    assert Path(new_thumbnail_path).is_absolute() == False
+    assert Path(router.file_api.THUMBNAIL_DIR / new_thumbnail_path).exists()
+    assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists() == False  # old thumbnail should be deleted
 
 def test_add_not_existing_image(client: TestClient):
     response = client.post("/image/create", params={"file": "not_existing.jpg"})
@@ -209,7 +245,8 @@ def test_delete_images(client: TestClient, session: Session):
     assert data[0]["thumbnail_path"] is not None
 
     # check if the thumbnail is deleted
-    thumbnail_path = router.file_api.THUMBNAIL_DIR / data[0]["thumbnail_path"]
+    thumbnail_path : Path= router.file_api.THUMBNAIL_DIR / data[0]["thumbnail_path"]
+    assert Path(data[0]["thumbnail_path"]).is_absolute() == False # only base name should be returned
     assert thumbnail_path.exists()
 
     # vector db

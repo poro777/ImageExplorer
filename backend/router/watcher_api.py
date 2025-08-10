@@ -9,7 +9,8 @@ from database.database import get_session
 
 import indexer
 
-from router.file_api import getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
+from router.file_api import create_thumbnail, getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
+import router.file_api as file_api
 from datetime import datetime
 import watcher
 
@@ -59,16 +60,21 @@ def add_path_to_listener(path: str, session: Session = Depends(get_session)):
                         continue # file not modified
 
                     pil_image = ImageLoader.open(file)
+                    thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
                     image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
                     image.width=pil_image.width
                     image.height=pil_image.height
+                    if image.thumbnail_path is not None:
+                        (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
+                    image.thumbnail_path = thumbnail_path.name
 
                 else:
                     pil_image = ImageLoader.open(file)
+                    thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
                     image = Image(directory_id=directory.id, filename=name, 
                                 width=pil_image.width, height=pil_image.height, 
                                 last_modified=datetime.fromtimestamp(file.stat().st_mtime),
-                                full_path=file.resolve().as_posix())
+                                full_path=file.resolve().as_posix(), thumbnail_path=thumbnail_path.name)
                     session.add(image)
 
                 session.commit()
@@ -111,7 +117,11 @@ def remove_path_from_listener(path: str, delete_images: bool = False, session: S
         directory.is_watching = False
         if delete_images:
             indexer.delete_by_list(indexer.COLLECTION_NAME, [image.id for image in directory.images])
-            session.exec(delete(Image).where(Image.directory_id == directory.id))
+            images = session.exec(select(Image).where(Image.directory_id == directory.id))
+            for image in images:
+                if image.thumbnail_path is not None:
+                    (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
+                session.delete(image)
         session.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Cannot delete images")
