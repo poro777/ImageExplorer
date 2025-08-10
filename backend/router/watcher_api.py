@@ -50,6 +50,10 @@ async def process_folder(path: Path,
     files = [getPathOfImageFile(file) for file in path.iterdir()]
     files = [file for file in files if file is not None]
     total_files = len(files)
+
+    if progress_cb is not None:
+        await progress_cb(0, total_files)
+
     for idx, file in enumerate(files, start=1):
         name = file.name
 
@@ -91,7 +95,9 @@ async def process_folder(path: Path,
                     detail=f"Cannot insert image to vector db."
                 )
             
-            images.append(image.model_dump())
+            images.append(image.model_dump(mode="json"))
+            if progress_cb is not None:
+                await progress_cb(idx, total_files)
 
         except Exception as e:
             print(e)
