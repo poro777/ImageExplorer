@@ -146,7 +146,7 @@ def test_update_images(client: TestClient, session: Session, tmp_images_path: Pa
     assert response.status_code == 200
     data = response.json()
     assert id == data["id"]
-    assert last_modified != data["last_modified"]
+    assert data["last_modified"] == datetime.fromtimestamp((tmp_images_path / PATH_HUSKY_IMAGE).stat().st_mtime).isoformat()
 
     assert data["filename"] == HUSKY_IMAGE
     assert data["full_path"] == (tmp_images_path / PATH_HUSKY_IMAGE).resolve().as_posix()
