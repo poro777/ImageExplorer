@@ -197,6 +197,7 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
     assert response.status_code == 200
     data = response.json()
     thumbnail_path = data["thumbnail_path"]
+    assert Path(thumbnail_path).is_absolute() == False
     assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
 
     new_file = base / ("renamed_" + HUSKY_IMAGE) # rename to new file to prevent genai cache
@@ -215,6 +216,7 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
     data = response.json()
     new_thumbnail_path = data["thumbnail_path"]
     assert new_thumbnail_path != thumbnail_path
+    assert Path(new_thumbnail_path).is_absolute() == False
     assert Path(router.file_api.THUMBNAIL_DIR / new_thumbnail_path).exists()
     assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists() == False  # old thumbnail should be deleted
 
