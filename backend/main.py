@@ -1,4 +1,4 @@
-from router import vector_db_api, file_api, sqlite_api, watcher_api
+from router import vector_db_api, file_api, sqlite_api, watcher_api, ws_router
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -35,6 +35,7 @@ app.include_router(vector_db_api.router)
 app.include_router(file_api.router)
 app.include_router(sqlite_api.router)
 app.include_router(watcher_api.router)
+app.include_router(ws_router.router)
 
 app.add_middleware(
     CORSMiddleware,

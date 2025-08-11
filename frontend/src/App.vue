@@ -6,10 +6,12 @@
     style="padding-left: 2rem; padding-right: 2rem"
   >
     <BNavbarBrand href="#" variant="light" style="margin-right: 3rem;">ImageExplorer</BNavbarBrand>
-    <BButton @click="openAddPage = true" variant="info" class="me-2">
+    <BButton @click="openAddPage = adder.status.value === 'done'" variant="info" class="me-2" 
+      :loading="adder.status.value === 'processing'"
+      :loading-text="adder.progress.value + `/` + adder.total.value">
       Add Folder
     </BButton>
-
+   
     <BNavForm class="ms-auto mb-2">
       <div>
       <BInputGroup
@@ -73,9 +75,14 @@
   </BModal>
 
   <div class="page">
-    <div v-if="results.length" class="directory-block">
-      <h2 class="directory-title">Search Results</h2>
-      <div class="gallery">
+    <div v-if="searched || isQuerying" class="directory-block">
+      <h2 class="directory-title">Search Results: {{ results.length }}</h2>
+      <div v-if="isQuerying">
+        <BPlaceholder cols="7" animation="glow"/>
+        <BPlaceholder width="65" animation="glow"/>
+        <BPlaceholder cols="6" animation="glow"/>
+      </div>
+      <div v-else class="gallery">
         <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img.full_path)">
           <BImg v-if="img.thumbnail_path != null" lazy :src="getThumbnailUrl(img.thumbnail_path)"></BImg>
           <BImg v-else lazy :src="getImageUrl(img.full_path)"></BImg>
@@ -131,6 +138,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import {folderAdder} from './watcher'
 
 const images = ref([])
 const showModal = ref(false)
@@ -149,6 +157,10 @@ const openSelectQueryFolder = ref(false)
 const perPage = ref(4)
 const currentPage = ref(1)
 const groupCount = ref(0)
+const isQuerying = ref(false)
+const searched = ref(false)
+
+let adder = folderAdder()
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -221,6 +233,9 @@ const selectFolder = async () => {
 const addFolder = async () => {
   if (!selectedFolder) return
 
+  adder.start(selectedFolder.value)
+ 
+  return;
   await axios.post('http://127.0.0.1:8000/watcher/add', null, {
     params: { path: selectedFolder.value }
   })
@@ -250,6 +265,8 @@ const fetchResults = async () => {
       results.value = []
       return
     }
+
+    isQuerying.value = true
     const res = await axios.get('http://127.0.0.1:8000/api/query', {
       params: { 
         text: queryText.value, 
@@ -259,7 +276,9 @@ const fetchResults = async () => {
         path: queryFolder.value == '' ? null : queryFolder.value
       }
     })
+    isQuerying.value = false
     results.value = res.data
+    searched.value = true
   } catch (err) {
     console.error('Search failed', err)
     alert('Search failed. Check console for details.')
