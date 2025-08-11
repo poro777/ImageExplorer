@@ -27,7 +27,7 @@ def watcher_is_ready():
 
 async def process_folder(path: Path, 
     session: Session, 
-    progress_cb: Optional[Callable[[int, int], None]] = None) -> List[Image]:
+    progress_cb: Optional[Callable[[int, int], None]] = None) -> List[dict]:
     '''inesrt or update a batch of files in a folder'''
 
     path:Path = getFolderPath(path)
@@ -106,9 +106,10 @@ async def process_folder(path: Path,
     watcher.fs_watcher.add(path)
     return images
 
-@router.post("/add", response_model=List[Image])
-def add_path_to_listener(path: str, session: Session = Depends(get_session)):
-    return process_folder(Path(path), session)
+@router.post("/add", response_model=List[dict])
+async def add_path_to_listener(path: str, session: Session = Depends(get_session)):
+    result = await process_folder(Path(path), session)
+    return result
 
 @router.delete("/remove")
 def remove_path_from_listener(path: str, delete_images: bool = False, session: Session = Depends(get_session)):
