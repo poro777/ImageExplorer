@@ -16,11 +16,11 @@ async def ws_add_path_to_listener(websocket: WebSocket, path: str):
 
     async def progress_cb(current, total):
         print(f"Processing {current}/{total} files")
-        await websocket.send_json({"processing": f"{current}/{total}"})
+        await websocket.send_json({"status": "processing", "current": current, "total": total})
 
     try:
         images = await watcher_api.process_folder(Path(path), session, progress_cb=progress_cb)
-        await websocket.send_json({"done": images})
+        await websocket.send_json({"status": "done", "images": images})
     except WebSocketDisconnect:
         print("WebSocket disconnected during processing")
     except Exception as e:

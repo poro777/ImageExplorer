@@ -1,8 +1,9 @@
 import { ref, shallowRef, onUnmounted } from "vue";
 
 export function folderAdder() {
-  const progress = ref("0/0");
-  const status = ref("idle");
+  const progress = ref(0);
+  const total = ref(0);
+  const status = ref("done");
   const socket = shallowRef(null);
 
   function start(path) {
@@ -24,16 +25,20 @@ export function folderAdder() {
       const data = JSON.parse(event.data);
       console.log("WebSocket message received:", data);
       
-      if (data.done) {
+      if (data.status === "done") {
         status.value = "done";
         newSocket.close();
-      } else if (data.error) {
+      } 
+      else if (data.status === "processing") {
+        status.value = "processing";
+        progress.value = data.current;
+        total.value = data.total; 
+      }
+      else if (data.error) {
         status.value = "error";
         newSocket.close();
       }
-      else if (data.processing) {
-        progress.value = data.processing; // "current/total"
-      }
+      
       
     };
 
@@ -61,5 +66,5 @@ export function folderAdder() {
     stop();
   });
 
-  return { progress, status, start, stop };
+  return { progress, status, total, start, stop };
 }
