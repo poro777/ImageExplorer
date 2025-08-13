@@ -1,6 +1,7 @@
-from router import vector_db_api, file_api, sqlite_api, watcher_api, ws_router
+from router import vector_db_api, file_api, sqlite_api, watcher_api, ws_router, watcher_sse
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+import signal
 
 from fastapi import FastAPI, Depends
 from sqlmodel import Session, select
@@ -19,7 +20,7 @@ async def lifespan(app: FastAPI):
         indexer.create_embed_db(indexer.COLLECTION_NAME)
 
     watcher.fs_watcher.start()
-
+    signal.signal(signal.SIGINT, stop_server)
     yield
 
     watcher.fs_watcher.stop()
@@ -29,6 +30,10 @@ origins = [
     "http://127.0.0.1:5173",   # Alternate
 ]
 
+def stop_server(*args):
+    watcher_sse.stop_event_stream()
+    raise KeyboardInterrupt
+
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(vector_db_api.router)
@@ -36,6 +41,7 @@ app.include_router(file_api.router)
 app.include_router(sqlite_api.router)
 app.include_router(watcher_api.router)
 app.include_router(ws_router.router)
+app.include_router(watcher_sse.router)
 
 app.add_middleware(
     CORSMiddleware,

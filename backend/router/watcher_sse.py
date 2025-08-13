@@ -1,0 +1,68 @@
+import asyncio
+import json
+from fastapi import APIRouter, HTTPException, Request
+from pathlib import Path
+from fastapi import Depends
+from fastapi.responses import StreamingResponse
+from fastapi import WebSocket, WebSocketDisconnect
+
+router = APIRouter(
+    prefix="/watcher",
+    tags=["watcher"],
+)
+# Store each client as an asyncio.Queue
+subscribers: list[asyncio.Queue] = []
+
+def stop_event_stream():
+    """Stop the event stream by clearing the subscribers list."""
+    global subscribers
+    for queue in subscribers:
+        queue.put_nowait(None)  # Signal to stop the stream
+    print("Subscribers have been cleared.", len(subscribers))
+
+def broadcast_event(event: str, data: dict = None):
+    """Send event to all connected clients."""
+    asyncio.run(_broadcast_event({
+        "event": event,
+        "data": data if data is not None else {}
+    }))
+
+async def _broadcast_event(event: dict):
+    """Send event to all connected clients."""
+    disconnected = []
+    for queue in subscribers:
+        try:
+            await queue.put(event)
+        except asyncio.CancelledError:
+            disconnected.append(queue)
+    # Remove broken queues
+    for queue in disconnected:
+        if queue in subscribers:
+            print("Client disconnected, removing queue.")
+            subscribers.remove(queue)
+
+async def sse_event_stream(client_queue: asyncio.Queue):
+    """Yields events from a single client's queue."""
+    try:
+        while True:
+            event = await client_queue.get()
+            if event is None:  # Stop signal
+                break
+            yield f"event: {event['event']}\n"
+            yield f"data: {json.dumps(event['data'])}\n\n"
+            client_queue.task_done()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        print("Client disconnected, removing queue.")
+        if client_queue in subscribers:
+            subscribers.remove(client_queue)
+
+@router.get("/sse")
+async def sse(request: Request):
+    """Handle a new SSE client connection."""
+    client_queue = asyncio.Queue()
+    subscribers.append(client_queue)
+
+    return StreamingResponse(sse_event_stream(client_queue),
+                             media_type="text/event-stream")
