@@ -67,6 +67,36 @@ async def sse_event_stream(client_queue: asyncio.Queue):
         if client_queue in subscribers:
             subscribers.remove(client_queue)
 
+@router.get("/sse-test")
+async def sse_test(request: Request):
+    """Handle a new SSE client connection."""
+    async def test(client_queue):
+        """Yields events from a single client's queue."""
+        try:
+            while True:
+                event = await client_queue.get()
+                if event is None:  # Stop signal
+                    break
+                yield f"event: {event['event']}\n"
+                yield f"data: {json.dumps(event['data'])}\n\n"
+                client_queue.task_done()
+                await asyncio.sleep(1)  # Simulate some delay
+        except asyncio.CancelledError:
+            pass
+        finally:
+            print("Client disconnected. (test)")
+
+    client_queue = asyncio.Queue()
+    client_queue.put_nowait({"event": "start_processing", "data": {}})
+    client_queue.put_nowait({"event": "update", "data": {"path": "D:/user/ImageExplorer/backend/images/flower.jpg"}})
+    client_queue.put_nowait({"event": "delete", "data": {"path": "D:/user/ImageExplorer/backend/images/flower.jpg"}})
+    client_queue.put_nowait({"event": "update", "data": {"path": "D:/user/ImageExplorer/backend/images/flower.jpg"}})
+    client_queue.put_nowait({"event": "stop_processing", "data": {}})
+
+    client_queue.put_nowait(None)  # Stop signal for the test
+    return StreamingResponse(test(client_queue),
+                             media_type="text/event-stream")
+
 @router.get("/sse")
 async def sse(request: Request):
     """Handle a new SSE client connection."""

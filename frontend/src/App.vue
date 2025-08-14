@@ -1,4 +1,5 @@
 <template>
+  <BToastOrchestrator />
 
   <BNavbar
     v-b-color-mode="'light'"
@@ -132,6 +133,17 @@
       
     </div>
   </div>
+
+    <div :class="'top-0 start-50 translate-middle-x'" class="toast-container position-fixed p-3">
+      <BToast v-model="watcherProcessing" no-close-button :show-on-pause="false">
+        <template #title> Changes detected </template>
+        <div style="min-width: 100%; display: flex; align-items: center; margin: auto;"> 
+          <BSpinner label="Spinning"class="mx-1" />
+          <div style="margin-left: 1em;"> Watching for changes... </div>
+       </div>
+        
+      </BToast>
+    </div>
 </template>
 
 
@@ -139,13 +151,11 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import {folderAdder} from './watcher'
+import { useToastController } from 'bootstrap-vue-next'
 
 const images = ref([])
 const showModal = ref(false)
 const showInfo = ref(false)
-const currentGroup = ref([])
-const currentIndex = ref(0)
-const show = ref(false)
 const queryText = ref('')
 const selectedFolder = ref('')
 const results = ref([])
@@ -160,7 +170,12 @@ const groupCount = ref(0)
 const isQuerying = ref(false)
 const searched = ref(false)
 
+let pageVisible = document.visibilityState === 'visible' ? true : false;
+
 let adder = folderAdder()
+const {create} = useToastController()
+
+const watcherProcessing = ref(false)
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -174,12 +189,16 @@ onMounted(() => {
   if (window.electronAPI) {
     isElectron.value = true;
   }
+  document.addEventListener('visibilitychange', () => {pageVisible = document.visibilityState === 'visible' ? true : false;
+    console.log("Page visibility changed:", pageVisible);
+  });
 });
 
 const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
 const getThumbnailUrl = (path) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
 
 // Group by directory_id
+// TODO : prevent repeated computation
 const groupedImages = computed(() => {
   const groups = {} 
   for (const img of images.value) {
@@ -279,11 +298,92 @@ const fetchResults = async () => {
     isQuerying.value = false
     results.value = res.data
     searched.value = true
+
   } catch (err) {
     console.error('Search failed', err)
     alert('Search failed. Check console for details.')
   }
 }
+
+const source = new EventSource("http://127.0.0.1:8000/watcher/sse");
+let isOpenOnce = false;
+source.onopen = function() {
+ if(isOpenOnce) {
+  source.close();
+ }else {
+  console.log("Connection to server opened.");
+  isOpenOnce = true;
+ }
+}
+source.addEventListener("update", async  (event) => {
+    const data = JSON.parse(event.data);
+    if(pageVisible)
+      watcherProcessing.value = true;
+
+    // insert or update the image in the images array
+    const res = await axios.get('http://127.0.0.1:8000/image/lookup', {
+      params: { 
+        file: data.path,
+      }
+    });
+
+    let image = res.data;
+
+    const index = images.value.findIndex(img => img.full_path === image.full_path);
+    if (index !== -1) {
+      images.value[index] = image; // Update existing image
+    } else {
+      images.value.push(image); // Add new image
+    }
+
+    create?.({
+        props: {
+          title: 'Update',
+          pos: 'middle-center',
+          value: 10000,
+          body: data,
+        },
+      })
+});
+
+source.addEventListener("delete", (event) => {
+    const data = JSON.parse(event.data);
+    if(pageVisible)
+      watcherProcessing.value = true;
+    // remove the image from the images array
+    images.value = images.value.filter(img => img.full_path !== data.path);
+    create?.({
+        props: {
+          title: 'Delete',
+          pos: 'middle-center',
+          value: 10000,
+          body: data,
+        },
+      })
+});
+
+source.addEventListener("create", (event) => {
+    const data = JSON.parse(event.data);
+    console.log("CREATE folder event:", data);
+});
+
+source.addEventListener("remove", (event) => {
+    const data = JSON.parse(event.data);
+    console.log("REMOVE folder event:", data);
+});
+
+
+source.addEventListener("start_processing", (event) => {
+    if(pageVisible)
+      watcherProcessing.value = true;
+});
+
+source.addEventListener("stop_processing", (event) => {
+    if(pageVisible)
+      watcherProcessing.value = false;
+});
+
+
 </script>
 
 <style scoped>

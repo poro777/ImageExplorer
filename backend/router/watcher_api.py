@@ -105,7 +105,7 @@ async def process_folder(path: Path,
             continue
 
     watcher.fs_watcher.add(path)
-    await watcher_sse._broadcast_event("add", {"dir": path.as_posix()})
+    await watcher_sse._broadcast_event("create", {"dir": path.as_posix()})
     return images
 
 @router.post("/add", response_model=List[dict])
