@@ -110,7 +110,7 @@ class ChangedFile:
                     self.mtime = mtime
                 elif new_type == FileChangeType.MODIFIED and self._same_path(self.src, path):
                     # if modified, keep the same src and update mtime
-                    self.type = FileChangeType.MODIFIED
+                    self.type = FileChangeType.CREATED
                     self.mtime = mtime
                 else:
                     print(f"[watchdog] Change type mismatch: {self.type} -> {new_type}", self.src, path)

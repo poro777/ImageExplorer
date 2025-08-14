@@ -80,6 +80,5 @@ def tmp_thumbnail(tmp_path: Path):
     original = router.file_api.THUMBNAIL_DIR
     router.file_api.THUMBNAIL_DIR = tmp_path / "tmp_thumbnails"
     yield
-    router.file_api.delete_all_thumbnails()
     router.file_api.THUMBNAIL_DIR = original  # restore original after session
 
