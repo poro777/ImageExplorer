@@ -16,6 +16,7 @@ from router.file_api import ALLOWED_EXTENSIONS
 import router.file_api
 from router.sqlite_api import inesrt_or_update_image, delete_image, move_image_path
 from database.utils import get_all_listening_paths, query_images_by_path
+import router.watcher_sse as watcher_sse
 
 class ListItem:
     def __init__(self):
@@ -196,6 +197,9 @@ def add_file(src: Path, type: str, mtime: datetime, dst: Optional[Path] = None):
                 file = ChangedFile(src, type, mtime, dst)
                 waitting_list[src.name].files.append(file)
         else:
+            if len(waitting_list) == 0:
+                watcher_sse.broadcast_start_processing_event()
+
             file = ChangedFile(src, type, mtime, dst)
             waitting_list.setdefault(src.name, ListItem()).files.append(file)
 
@@ -244,6 +248,8 @@ def process_waitting_list(id):
                 if len(item.files) == 0:
                     item.is_processing = False # unlock the processing flag
                     waitting_list.pop(name)
+                    if len(waitting_list) == 0:
+                        watcher_sse.broadcast_stop_processing_event()
                     break
             
         

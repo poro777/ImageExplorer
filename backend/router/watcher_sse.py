@@ -20,19 +20,28 @@ def stop_event_stream():
         queue.put_nowait(None)  # Signal to stop the stream
     print("Subscribers have been cleared.", len(subscribers))
 
+def broadcast_start_processing_event():
+    """Start processing a folder and notify all subscribers."""
+    broadcast_event("start_processing")
+
+def broadcast_stop_processing_event():
+    """Stop processing a folder and notify all subscribers."""
+    broadcast_event("stop_processing")
+
 def broadcast_event(event: str, data: dict = None):
     """Send event to all connected clients."""
-    asyncio.run(_broadcast_event({
+    asyncio.run(_broadcast_event(event, data))
+
+async def _broadcast_event(event: str, data: dict = None):
+    """Send event to all connected clients."""
+    item = {
         "event": event,
         "data": data if data is not None else {}
-    }))
-
-async def _broadcast_event(event: dict):
-    """Send event to all connected clients."""
+    }
     disconnected = []
     for queue in subscribers:
         try:
-            await queue.put(event)
+            await queue.put(item)
         except asyncio.CancelledError:
             disconnected.append(queue)
     # Remove broken queues
