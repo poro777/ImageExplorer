@@ -93,7 +93,7 @@
 
     <b-pagination
             v-model="currentPage"
-            :total-rows="groupCount"
+            :total-rows="groupedImages.count.value"
             :per-page="perPage"
             align="center"
     />
@@ -152,8 +152,8 @@ import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import {folderAdder} from './watcher'
 import { useToastController } from 'bootstrap-vue-next'
+import { groupImages } from './groupImages'
 
-const images = ref([])
 const showModal = ref(false)
 const showInfo = ref(false)
 const queryText = ref('')
@@ -166,13 +166,15 @@ const queryFolder = ref('');
 const openSelectQueryFolder = ref(false)
 const perPage = ref(4)
 const currentPage = ref(1)
-const groupCount = ref(0)
+
 const isQuerying = ref(false)
 const searched = ref(false)
 
 let pageVisible = document.visibilityState === 'visible' ? true : false;
 
 let adder = folderAdder()
+let groupedImages = groupImages()
+
 const {create} = useToastController()
 
 const watcherProcessing = ref(false)
@@ -189,29 +191,27 @@ onMounted(() => {
   if (window.electronAPI) {
     isElectron.value = true;
   }
-  document.addEventListener('visibilitychange', () => {pageVisible = document.visibilityState === 'visible' ? true : false;
-    console.log("Page visibility changed:", pageVisible);
+  document.addEventListener('visibilitychange', () => {
+    pageVisible = document.visibilityState === 'visible' ? true : false;
   });
 });
+
+onMounted(async () => {
+  try {
+    const res = await axios.get('http://127.0.0.1:8000/watcher/listening')
+
+    let folders = res.data
+    groupedImages.init(folders)
+    
+    
+  } catch (err) {
+    console.error('Failed to load images', err)
+  }
+})
 
 const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
 const getThumbnailUrl = (path) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
 
-// Group by directory_id
-// TODO : prevent repeated computation
-const groupedImages = computed(() => {
-  const groups = {} 
-  for (const img of images.value) {
-    const full_path = img.full_path
-    const dirPath = full_path.substring(0, full_path.lastIndexOf('/'))
-    if (!groups[dirPath]) {
-      groups[dirPath] = []
-    }
-    groups[dirPath].push(img)
-  }
-  groupCount.value = Object.keys(groups).length
-  return Object.entries(groups).map(([dirname, list]) => ({ dirname, list }))
-})
 
 const openModal = (full_path) => {
   currentImage.value = full_path
@@ -226,14 +226,6 @@ const closeModal = () => {
   showInfo.value = false
 }
 
-onMounted(async () => {
-  try {
-    const res = await axios.get('http://127.0.0.1:8000/image')
-    images.value = res.data
-  } catch (err) {
-    console.error('Failed to load images', err)
-  }
-})
 
 const selectFolder = async () => {
   if (!isElectron.value) return
@@ -326,21 +318,14 @@ source.addEventListener("update", async  (event) => {
       }
     });
 
-    let image = res.data;
-
-    const index = images.value.findIndex(img => img.full_path === image.full_path);
-    if (index !== -1) {
-      images.value[index] = image; // Update existing image
-    } else {
-      images.value.push(image); // Add new image
-    }
+    groupedImages.insertOrUpdateImage(res.data);
 
     create?.({
         props: {
           title: 'Update',
           pos: 'middle-center',
           value: 10000,
-          body: data,
+          body: data.path,
         },
       })
 });
@@ -349,25 +334,41 @@ source.addEventListener("delete", (event) => {
     const data = JSON.parse(event.data);
     watcherProcessing.value = true;
     // remove the image from the images array
-    images.value = images.value.filter(img => img.full_path !== data.path);
+    groupedImages.deleteImage(data.path);
     create?.({
         props: {
           title: 'Delete',
           pos: 'middle-center',
           value: 10000,
-          body: data,
+          body: data.path,
         },
       })
 });
 
 source.addEventListener("create", (event) => {
     const data = JSON.parse(event.data);
-    console.log("CREATE folder event:", data);
+    groupedImages.createDirectory(data.dir);
+    create?.({
+        props: {
+          title: 'CREATE FOLDER',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.dir,
+        },
+      })
 });
 
 source.addEventListener("remove", (event) => {
     const data = JSON.parse(event.data);
-    console.log("REMOVE folder event:", data);
+    groupedImages.removeDirectory(data.dir);
+    create?.({
+        props: {
+          title: 'REMOVE FOLDER',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.dir,
+        },
+      })
 });
 
 
