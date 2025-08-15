@@ -135,7 +135,7 @@
   </div>
 
     <div :class="'top-0 start-50 translate-middle-x'" class="toast-container position-fixed p-3">
-      <BToast v-model="watcherProcessing" no-close-button :show-on-pause="false">
+      <BToast :show="watcherProcessing" no-close-button :show-on-pause="false">
         <template #title> Changes detected </template>
         <div style="min-width: 100%; display: flex; align-items: center; margin: auto;"> 
           <BSpinner label="Spinning"class="mx-1" />
@@ -317,8 +317,7 @@ source.onopen = function() {
 }
 source.addEventListener("update", async  (event) => {
     const data = JSON.parse(event.data);
-    if(pageVisible)
-      watcherProcessing.value = true;
+    watcherProcessing.value = true;
 
     // insert or update the image in the images array
     const res = await axios.get('http://127.0.0.1:8000/image/lookup', {
@@ -348,8 +347,7 @@ source.addEventListener("update", async  (event) => {
 
 source.addEventListener("delete", (event) => {
     const data = JSON.parse(event.data);
-    if(pageVisible)
-      watcherProcessing.value = true;
+    watcherProcessing.value = true;
     // remove the image from the images array
     images.value = images.value.filter(img => img.full_path !== data.path);
     create?.({
@@ -374,13 +372,11 @@ source.addEventListener("remove", (event) => {
 
 
 source.addEventListener("start_processing", (event) => {
-    if(pageVisible)
-      watcherProcessing.value = true;
+    watcherProcessing.value = true;
 });
 
 source.addEventListener("stop_processing", (event) => {
-    if(pageVisible)
-      watcherProcessing.value = false;
+    watcherProcessing.value = false;
 });
 
 
