@@ -7,7 +7,7 @@ from PIL import Image as ImageLoader
 from database.models import Image, Directory
 from database.database import get_session
 from fastapi import WebSocket, WebSocketDisconnect
-
+from os import stat_result
 import indexer
 
 from router.file_api import create_thumbnail, getFolderPath, getPathOfImageFile, ALLOWED_EXTENSIONS
@@ -57,6 +57,8 @@ async def process_folder(path: Path,
     for idx, file in enumerate(files, start=1):
         name = file.name
 
+        file_stat: stat_result = file.stat()
+
         image = session.exec(select(Image).where(
             Image.directory_id == directory.id,
             Image.filename == name)
@@ -64,27 +66,31 @@ async def process_folder(path: Path,
         
         try:
             if image is not None: # image already exists
-                if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file.stat().st_mtime):
+                if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file_stat.st_mtime) \
+                    and image.file_size is not None and image.file_size == file_stat.st_size:
                     if progress_cb is not None:
                         await progress_cb(idx, total_files)
                     continue # file not modified
 
                 pil_image = ImageLoader.open(file)
                 thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
-                image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
+                image.last_modified = datetime.fromtimestamp(file_stat.st_mtime)
                 image.width=pil_image.width
                 image.height=pil_image.height
                 if image.thumbnail_path is not None:
                     (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
                 image.thumbnail_path = thumbnail_path.name
+                image.file_size = file_stat.st_size
 
             else:
                 pil_image = ImageLoader.open(file)
                 thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
                 image = Image(directory_id=directory.id, filename=name, 
                             width=pil_image.width, height=pil_image.height, 
-                            last_modified=datetime.fromtimestamp(file.stat().st_mtime),
-                            full_path=file.resolve().as_posix(), thumbnail_path=thumbnail_path.name)
+                            last_modified=datetime.fromtimestamp(file_stat.st_mtime),
+                            full_path=file.resolve().as_posix(), 
+                            thumbnail_path=thumbnail_path.name,
+                            file_size=file_stat.st_size)
                 session.add(image)
 
             session.commit()
