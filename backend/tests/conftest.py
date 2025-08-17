@@ -1,3 +1,5 @@
+import httpx
+import pytest_asyncio
 from tests.utils import *
 from tests.constants import *
 
@@ -52,6 +54,20 @@ def client_fixture(session: Session, db_session):
     yield client  
     app.dependency_overrides.clear()  
 
+@pytest_asyncio.fixture(name="async_client")
+async def async_client_fixture(session: Session, db_session):
+    """Async test client fixture using httpx.AsyncClient."""
+    
+    def get_session_override():
+        return session
+
+    app.dependency_overrides[database.database.get_session] = get_session_override
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
+    
 @pytest.fixture
 def tmp_images_path(tmp_path: Path) -> Path:
     copy_file(BASE_DIR, tmp_path, PATH_HUSKY_IMAGE)
@@ -66,6 +82,7 @@ def tmp_images_path(tmp_path: Path) -> Path:
 
 @pytest.fixture(name="fs_watcher")
 def fs_watcher_fixture(monkeypatch,session: Session):
+    '''start watchdog service for tests'''
     fs_watcher = watcher.WatchdogService()
 
     monkeypatch.setattr(watcher, "fs_watcher", fs_watcher)
