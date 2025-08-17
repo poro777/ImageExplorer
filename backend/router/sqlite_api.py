@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+from os import stat_result
 from fastapi import Depends
 from sqlmodel import Session, select, text
 from typing import List, Optional
@@ -61,6 +62,7 @@ def inesrt_or_update_image(file: str, session: Session):
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
     
+    file_stat: stat_result = file.stat()
     path = file.parent.as_posix()
     name = file.name
 
@@ -79,11 +81,14 @@ def inesrt_or_update_image(file: str, session: Session):
         thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
         image = Image(directory_id=directory.id, filename=name, 
                   width=pil_image.width, height=pil_image.height, 
-                  last_modified=datetime.fromtimestamp(file.stat().st_mtime,),
-                  full_path=file.as_posix(), thumbnail_path=thumbnail_path.name)
+                  last_modified=datetime.fromtimestamp(file_stat.st_mtime,),
+                  full_path=file.as_posix(), 
+                  thumbnail_path=thumbnail_path.name,
+                  file_size=file_stat.st_size)
         session.add(image)
     else:
-        if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file.stat().st_mtime):
+        if image.last_modified is not None and image.last_modified == datetime.fromtimestamp(file_stat.st_mtime) \
+            and image.file_size is not None and image.file_size == file_stat.st_size:
             # file not modified
             return None
         
@@ -91,10 +96,11 @@ def inesrt_or_update_image(file: str, session: Session):
         thumbnail_path = create_thumbnail(pil_image, ext=file.suffix)
         image.width=pil_image.width
         image.height=pil_image.height
-        image.last_modified = datetime.fromtimestamp(file.stat().st_mtime)
+        image.last_modified = datetime.fromtimestamp(file_stat.st_mtime)
         if image.thumbnail_path is not None:
             Path(file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
         image.thumbnail_path = thumbnail_path.name
+        image.file_size = file_stat.st_size
 
     try:
         session.commit()
@@ -224,7 +230,7 @@ def move_image_path(current: Path, new: Path, replace = False, session: Session 
 
     try:
         if target_image is not None:
-            session.delete(target_image)
+            delete_image(target_image.full_path, session)
 
         new_dorectory = session.exec(select(Directory).where(Directory.path == new_path)).first()
         if not new_dorectory:
