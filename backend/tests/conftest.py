@@ -14,13 +14,11 @@ from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool  
 
 import indexer
-indexer.COLLECTION_NAME = "test_collection"
 
 from main import app
 import watcher
 
 import router.file_api
-indexer.create_embed_db(indexer.COLLECTION_NAME)
 
 indexer.genai_api.delete_uploaded_files()
 
@@ -40,8 +38,14 @@ def session_fixture(monkeypatch):
         yield session
 
 @pytest.fixture(name="db_session")
-def vector_db_fixture():
-    clear_vector_db()
+def vector_db_fixture(monkeypatch):
+    monkeypatch.setattr(indexer, "COLLECTION_NAME", "test_collection")
+    assert indexer.COLLECTION_NAME is "test_collection"
+
+    if not indexer.is_collection_exist(indexer.COLLECTION_NAME):
+        indexer.create_embed_db(indexer.COLLECTION_NAME)
+    else:
+        clear_vector_db()
 
 @pytest.fixture(name="client")  
 def client_fixture(session: Session, db_session):  

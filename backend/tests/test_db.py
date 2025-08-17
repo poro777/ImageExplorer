@@ -2,15 +2,10 @@
 from tests.utils import *
 from tests.constants import *
 
-import indexer
-indexer.COLLECTION_NAME = "test_collection"
-
 from datetime import datetime
 from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
-
-import indexer
 
 from router.file_api import getPathOfImageFile, BASE_DIR
 import router.file_api
@@ -125,6 +120,7 @@ def test_add_images(client: TestClient):
 
 def test_update_images(client: TestClient, session: Session, tmp_images_path: Path):
     inesrt_or_update_image((tmp_images_path / PATH_HUSKY_IMAGE).as_posix(), session)
+    # rename the image to test replacement
     rename_file(tmp_images_path / SUBFOLDER, HUSKY_IMAGE_2, HUSKY_IMAGE)
     
 
@@ -132,7 +128,6 @@ def test_update_images(client: TestClient, session: Session, tmp_images_path: Pa
     assert response.status_code == 200
     data = response.json()
     id = data["id"]
-    last_modified = data["last_modified"]
     thumbnail_path = Path(data["thumbnail_path"])
     assert data["filename"] == HUSKY_IMAGE
     assert data["full_path"] == (tmp_images_path / PATH_HUSKY_IMAGE).resolve().as_posix()

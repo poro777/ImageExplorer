@@ -1,5 +1,6 @@
 # watcher.py
 from datetime import datetime
+from os import stat_result
 import os
 import time
 from typing import Dict, Optional
@@ -55,7 +56,6 @@ def is_image(file: Path):
 
 def only_update_metadata(file: Path):
     image = query_images_by_path(file)
-    mtime = file.stat().st_mtime
 
     if image is None:
         return False
@@ -63,7 +63,11 @@ def only_update_metadata(file: Path):
     if image.last_modified is None:
         return False
     
-    return datetime.fromtimestamp(mtime) == image.last_modified
+    file_stat: stat_result = file.stat()
+    mtime = file_stat.st_mtime
+    file_size = file_stat.st_size
+    
+    return datetime.fromtimestamp(mtime) == image.last_modified and file_size == image.file_size
         
 class FileChangeType(Enum):
     CREATED = "created"

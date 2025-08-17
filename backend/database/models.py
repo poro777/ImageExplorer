@@ -30,3 +30,4 @@ class Image(SQLModel, table=True):
     directory: Optional[Directory] = Relationship(back_populates="images")
 
     last_modified: Optional[datetime] = Field(default=None)
+    file_size: Optional[int] = Field(default=None)  # in bytes
