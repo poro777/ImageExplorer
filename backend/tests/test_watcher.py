@@ -302,7 +302,7 @@ def test_ChangedFile_CREATE(tmp_path: Path):
     changed = file.change_type(FileChangeType.MODIFIED, file_path, new_mtime)
 
     assert changed == True
-    assert file.type == FileChangeType.MODIFIED and file.mtime == new_mtime
+    assert file.type == FileChangeType.CREATED and file.mtime == new_mtime
 
     # 'create' follow 'delete' 
     # same mtime and filename => change to 'move'

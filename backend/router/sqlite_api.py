@@ -14,6 +14,7 @@ import indexer
 
 from router.file_api import getFolderPath, getPathOfImageFile, create_thumbnail, delete_all_thumbnails
 import router.file_api as file_api
+import router.watcher_sse as watcher_sse
 from datetime import datetime
 
 router = APIRouter(
@@ -118,6 +119,9 @@ def inesrt_or_update_image(file: str, session: Session):
             status_code=500,
             detail="Vector db insert failed"
         )
+    
+    watcher_sse.broadcast_event("update", {"path": file.as_posix()})
+
     return image
 
 
@@ -143,6 +147,9 @@ def delete_image(file: Path, session: Session):
             (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
         session.delete(image)
         session.commit()
+
+        watcher_sse.broadcast_event("delete", {"path": file.as_posix()})
+        
         return True
     except Exception as e:
         print(f"Error deleting image: {e}")
@@ -155,14 +162,10 @@ def delete_image_by_id(image_id: int, session: Session = Depends(get_session)):
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
     
-    successed = indexer.delete_one(indexer.COLLECTION_NAME, image.id)
-    if successed == False:
-        raise HTTPException(status_code=500, detail="Vector db delete failed")
-    if image.thumbnail_path is not None:
-        (file_api.THUMBNAIL_DIR / image.thumbnail_path).unlink(missing_ok=True)
-    session.delete(image)
-    session.commit()
+    successed = delete_image(Path(image.full_path), session)
     
+    if not successed:
+        raise HTTPException(status_code=500, detail="Failed to delete image from database or vector db")
     return {"detail": "Image deleted"}
 
 # GET /images/lookup?file=...
@@ -251,6 +254,9 @@ def move_image_path(current: Path, new: Path, replace = False, session: Session 
     if indexer.change_partition(indexer.COLLECTION_NAME, image.id, str(new_dorectory.id)) == False:
         print(f"Error moving image: {new.as_posix()} in vector db")
         return False
+
+    watcher_sse.broadcast_event("delete", {"path": current.as_posix()})
+    watcher_sse.broadcast_event("update", {"path": new.as_posix()})
 
     return True
 

@@ -1,4 +1,5 @@
 <template>
+  <BToastOrchestrator />
 
   <BNavbar
     v-b-color-mode="'light'"
@@ -92,7 +93,7 @@
 
     <b-pagination
             v-model="currentPage"
-            :total-rows="groupCount"
+            :total-rows="groupedImages.count.value"
             :per-page="perPage"
             align="center"
     />
@@ -132,6 +133,17 @@
       
     </div>
   </div>
+
+    <div :class="'top-0 start-50 translate-middle-x'" class="toast-container position-fixed p-3">
+      <BToast :show="watcherProcessing" no-close-button :show-on-pause="false">
+        <template #title> Changes detected </template>
+        <div style="min-width: 100%; display: flex; align-items: center; margin: auto;"> 
+          <BSpinner label="Spinning"class="mx-1" />
+          <div style="margin-left: 1em;"> Watching for changes... </div>
+       </div>
+        
+      </BToast>
+    </div>
 </template>
 
 
@@ -139,13 +151,11 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import {folderAdder} from './watcher'
+import { useToastController } from 'bootstrap-vue-next'
+import { groupImages } from './groupImages'
 
-const images = ref([])
 const showModal = ref(false)
 const showInfo = ref(false)
-const currentGroup = ref([])
-const currentIndex = ref(0)
-const show = ref(false)
 const queryText = ref('')
 const selectedFolder = ref('')
 const results = ref([])
@@ -156,11 +166,18 @@ const queryFolder = ref('');
 const openSelectQueryFolder = ref(false)
 const perPage = ref(4)
 const currentPage = ref(1)
-const groupCount = ref(0)
+
 const isQuerying = ref(false)
 const searched = ref(false)
 
+let pageVisible = document.visibilityState === 'visible' ? true : false;
+
 let adder = folderAdder()
+let groupedImages = groupImages()
+
+const {create} = useToastController()
+
+const watcherProcessing = ref(false)
 
 const queryOptions = [
   {text: 'Semantic Search', value: 'use_text_embed'},
@@ -174,25 +191,27 @@ onMounted(() => {
   if (window.electronAPI) {
     isElectron.value = true;
   }
+  document.addEventListener('visibilitychange', () => {
+    pageVisible = document.visibilityState === 'visible' ? true : false;
+  });
 });
+
+onMounted(async () => {
+  try {
+    const res = await axios.get('http://127.0.0.1:8000/watcher/listening')
+
+    let folders = res.data
+    groupedImages.init(folders)
+    
+    
+  } catch (err) {
+    console.error('Failed to load images', err)
+  }
+})
 
 const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
 const getThumbnailUrl = (path) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
 
-// Group by directory_id
-const groupedImages = computed(() => {
-  const groups = {} 
-  for (const img of images.value) {
-    const full_path = img.full_path
-    const dirPath = full_path.substring(0, full_path.lastIndexOf('/'))
-    if (!groups[dirPath]) {
-      groups[dirPath] = []
-    }
-    groups[dirPath].push(img)
-  }
-  groupCount.value = Object.keys(groups).length
-  return Object.entries(groups).map(([dirname, list]) => ({ dirname, list }))
-})
 
 const openModal = (full_path) => {
   currentImage.value = full_path
@@ -207,14 +226,6 @@ const closeModal = () => {
   showInfo.value = false
 }
 
-onMounted(async () => {
-  try {
-    const res = await axios.get('http://127.0.0.1:8000/image')
-    images.value = res.data
-  } catch (err) {
-    console.error('Failed to load images', err)
-  }
-})
 
 const selectFolder = async () => {
   if (!isElectron.value) return
@@ -279,11 +290,97 @@ const fetchResults = async () => {
     isQuerying.value = false
     results.value = res.data
     searched.value = true
+
   } catch (err) {
     console.error('Search failed', err)
     alert('Search failed. Check console for details.')
   }
 }
+
+const source = new EventSource("http://127.0.0.1:8000/watcher/sse");
+let isOpenOnce = false;
+source.onopen = function() {
+ if(isOpenOnce) {
+  source.close();
+ }else {
+  console.log("Connection to server opened.");
+  isOpenOnce = true;
+ }
+}
+source.addEventListener("update", async  (event) => {
+    const data = JSON.parse(event.data);
+    watcherProcessing.value = true;
+
+    // insert or update the image in the images array
+    const res = await axios.get('http://127.0.0.1:8000/image/lookup', {
+      params: { 
+        file: data.path,
+      }
+    });
+
+    groupedImages.insertOrUpdateImage(res.data);
+
+    create?.({
+        props: {
+          title: 'Update',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.path,
+        },
+      })
+});
+
+source.addEventListener("delete", (event) => {
+    const data = JSON.parse(event.data);
+    watcherProcessing.value = true;
+    // remove the image from the images array
+    groupedImages.deleteImage(data.path);
+    create?.({
+        props: {
+          title: 'Delete',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.path,
+        },
+      })
+});
+
+source.addEventListener("create", (event) => {
+    const data = JSON.parse(event.data);
+    groupedImages.createDirectory(data.dir);
+    create?.({
+        props: {
+          title: 'CREATE FOLDER',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.dir,
+        },
+      })
+});
+
+source.addEventListener("remove", (event) => {
+    const data = JSON.parse(event.data);
+    groupedImages.removeDirectory(data.dir);
+    create?.({
+        props: {
+          title: 'REMOVE FOLDER',
+          pos: 'middle-center',
+          value: 10000,
+          body: data.dir,
+        },
+      })
+});
+
+
+source.addEventListener("start_processing", (event) => {
+    watcherProcessing.value = true;
+});
+
+source.addEventListener("stop_processing", (event) => {
+    watcherProcessing.value = false;
+});
+
+
 </script>
 
 <style scoped>

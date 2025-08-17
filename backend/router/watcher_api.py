@@ -7,6 +7,8 @@ from PIL import Image as ImageLoader
 from database.models import Image, Directory
 from database.database import get_session
 from fastapi import WebSocket, WebSocketDisconnect
+import router.watcher_sse as watcher_sse
+
 from os import stat_result
 import indexer
 
@@ -110,6 +112,7 @@ async def process_folder(path: Path,
             continue
 
     watcher.fs_watcher.add(path)
+    await watcher_sse._broadcast_event("create", {"dir": path.as_posix()})
     return images
 
 @router.post("/add", response_model=List[dict])
@@ -146,6 +149,9 @@ def remove_path_from_listener(path: str, delete_images: bool = False, session: S
         session.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Cannot delete images")
+
+    if delete_images:
+        watcher_sse.broadcast_event("remove", {"dir": path.as_posix()})
 
 @router.get("/listening", response_model=List[Directory])
 def get_listening_paths(session: Session = Depends(get_session)):
