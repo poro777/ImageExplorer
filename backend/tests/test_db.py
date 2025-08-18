@@ -57,7 +57,6 @@ def test_root(client: TestClient):
     assert data["Good"] == "v8"  
 
 def test_empyt_database(client: TestClient):
-    wait_before_read_vecdb()
     # sqlite db
     response = client.get("/image")
     data = response.json()
@@ -256,7 +255,7 @@ def test_delete_images(client: TestClient, session: Session):
     response = client.delete(f"/image/{id}")
     assert response.status_code == 200
 
-    wait_before_read_vecdb()
+    wait_before_read_vecdb(3)
     # sqlite db
     response = client.get("/image")
     data = response.json()
@@ -281,10 +280,13 @@ def test_delete_all_images(client: TestClient, session: Session):
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_FLOWER_IMAGE, session)
 
+    wait_before_read_vecdb()
+
     response = client.delete("/image/delete_all")
     assert response.status_code == 200
+    assert response.json() == {"detail": "All images deleted"}
 
-    wait_before_read_vecdb()
+    wait_before_read_vecdb(3)
     # sqlite db
     response = client.get("/image")
     data = response.json()

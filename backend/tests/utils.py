@@ -48,12 +48,13 @@ def replace_file(src_folder: Path, dst_folder: Path, filename: str):
     file.replace(new_file)
 
 
-def wait_before_read_vecdb():
-    time.sleep(0.5)
+def wait_before_read_vecdb(level: int = 1):
+    time.sleep(0.5 * level) # wait for the vector db to update
 
 
 def clear_vector_db():
     """Clear the vector database for testing purposes.""" 
+    wait_before_read_vecdb(3)
     while True:
         ids = list(indexer.list_data(indexer.COLLECTION_NAME).keys())
         if len(ids) == 0:
