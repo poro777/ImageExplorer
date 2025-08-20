@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from fastapi import APIRouter, HTTPException, Request
 from pathlib import Path
 from fastapi import Depends
@@ -13,6 +14,9 @@ router = APIRouter(
 # Store each client as an asyncio.Queue
 subscribers: list[asyncio.Queue] = []
 
+lock = threading.Lock()
+processCount = 0
+
 def stop_event_stream():
     """Stop the event stream by clearing the subscribers list."""
     global subscribers
@@ -22,11 +26,19 @@ def stop_event_stream():
 
 def broadcast_start_processing_event():
     """Start processing a folder and notify all subscribers."""
+    with lock:
+        global processCount
+        processCount += 1
+
     broadcast_event("start_processing")
 
 def broadcast_stop_processing_event():
     """Stop processing a folder and notify all subscribers."""
-    broadcast_event("stop_processing")
+    with lock:
+        global processCount
+        processCount -= 1
+    if processCount == 0:
+        broadcast_event("stop_processing")
 
 def broadcast_event(event: str, data: dict = None):
     """Send event to all connected clients."""

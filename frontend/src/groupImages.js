@@ -54,6 +54,31 @@ export function groupImages() {
     }
   }
 
+  async function updateDesc(full_path) {
+    const dirPath = full_path.substring(0, full_path.lastIndexOf('/'));
+    const group = images.value.find(g => g.dirname === dirPath);
+    if (!group) {
+      return
+    }
+
+    const index = group.list.findIndex(img => img.full_path === full_path);
+    if (index === -1) {
+      return;
+    }
+
+    const image = group.list[index];
+
+    try {
+      const id = image.id
+      const res = await axios.get("http://127.0.0.1:8000/api/text", {
+        params: { id: id }
+      })
+      image.desc = res.data[id].replace(/\\n/g, "\n")   // backend should return plain text or JSON {text: "..."}
+    } catch (err) {
+      console.error("Failed to fetch text:", err)
+    }
+  }
+
   function deleteImage(full_path) {
     const dirPath = full_path.substring(0, full_path.lastIndexOf('/'));
     const group = images.value.find(g => g.dirname === dirPath);
@@ -82,5 +107,6 @@ export function groupImages() {
   }
 
 
-  return {images, count, init, insertOrUpdateImage, deleteImage, createDirectory, removeDirectory,slice};
+  return {images, count, init, insertOrUpdateImage, updateDesc,
+    deleteImage, createDirectory, removeDirectory,slice};
 }

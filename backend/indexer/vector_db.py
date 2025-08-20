@@ -353,6 +353,16 @@ def list_data(collection: str, partitions: Optional[List[str]] = None):
     return {tag[FIELD_ID]: tag[FIELD_TEXT] for tag in results} 
             
 
+def get_images_by_ids(collection: str, ids: List[int]):
+    '''return { id : text, ...}'''
+
+    with getClient() as client:
+        results = client.query(
+            collection_name=collection,
+            ids=ids,
+            output_fields=[FIELD_ID, FIELD_TEXT])
+        
+    return {tag[FIELD_ID]: tag[FIELD_TEXT] for tag in results} 
 
 def dump_json_data(collection: str, output_path: str = "data.json"):
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
@@ -408,7 +418,7 @@ def change_partition(collection: str, id: int, new_partition: str):
         return False
 
 
-def insert_image(collection: str, id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:
+def insert_image(collection: str, id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None, use_cache: bool = True) -> bool:
     image_format = image.format.lower()
 
     # Convert to BytesIO
@@ -416,7 +426,7 @@ def insert_image(collection: str, id: int, filename:str, image: ImageFile, parti
     image.save(buffer, format=image_format) 
     buffer.seek(0)  # rewind to the start of the stream
 
-    text = genai_api.explainImage(filename, image_format, buffer)
+    text = genai_api.explainImage(filename, image_format, buffer, use_cache)
     text_features = text_embed.get_text_embed_doc(text)
     image_features = clip_embed.get_image_embed(image)
 
