@@ -183,7 +183,7 @@ def test_watchdog_rename(client: TestClient, session: Session, fs_watcher: Watch
     assert response.json()["thumbnail_path"] == thubnail_path
     assert Path(router.file_api.THUMBNAIL_DIR / thubnail_path).exists()
 
-def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path):
+def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: WatchdogService, tmp_images_path: Path, monkeypatch):
     from io import BytesIO
 
     base = tmp_images_path
@@ -200,18 +200,16 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
     assert Path(thumbnail_path).is_absolute() == False
     assert Path(router.file_api.THUMBNAIL_DIR / thumbnail_path).exists()
 
-    new_file = base / ("renamed_" + HUSKY_IMAGE) # rename to new file to prevent genai cache
-    
-    rename_file(base, HUSKY_IMAGE, new_file.name)
-    
-    wait_watchdog_done()
+
+    # fake explainImage
+    monkeypatch.setattr(indexer.genai_api, 'explainImage', lambda *args, **kwargs: "1. Delicate white carnations and baby's breath create a serene floral arrangement.\n\n2. White, floral...\n\n")
 
     image: ImageFile = ImageLoader.open(BASE_DIR / FLOWER_IMAGE)
-    image.save(new_file, format=image.format)
+    image.save(file, format=image.format)
 
     wait_watchdog_done()
 
-    response = client.get("/image/lookup", params={"file": new_file.as_posix()})
+    response = client.get("/image/lookup", params={"file": file.as_posix()})
     assert response.status_code == 200
     data = response.json()
     new_thumbnail_path = data["thumbnail_path"]
@@ -229,7 +227,7 @@ def test_watchdog_modify(client: TestClient, session: Session, fs_watcher: Watch
     text = data['1']
     assert any((keywork in text) for keywork in ["flower", "floral", "baby's breath"])
 
-    indexer.genai_api.delete_uploaded_file(indexer.genai_api.sanitize_string(new_file.name))
+    indexer.genai_api.delete_uploaded_file(indexer.genai_api.sanitize_string(file.name))
 
 def test_ChangedFile_OTHER():
     file_path = getPathOfImageFile(PATH_HUSKY_IMAGE)
