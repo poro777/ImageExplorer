@@ -14,6 +14,7 @@ from indexer import genai_api, text_embed, clip_embed
 
 from PIL.ImageFile import ImageFile
 from io import BytesIO
+from contextlib import contextmanager
 
 TEXT_FEATURE_DIM = 256
 IMAGE_FEATURE_DIM = 512
@@ -36,45 +37,47 @@ FIELD_IMAGE_DENSE = "image_dense" # clip embedding
 FIELD_CN_TEXT = "cn_text" # raw text for chinese analyzer
 FIELD_CN_TEXT_SPARSE = "cn_text_sparse" # BM 25
 
+@contextmanager
 def getClient():
     """
     Get a Milvus client instance.
     """
-    return MilvusClient(uri=milvus_uri, token=milvus_token)
+    try:
+        client = MilvusClient(uri=milvus_uri, token=milvus_token)
+        yield client
+    finally:
+        #client.close()
+        pass
+
+    
+    
 
 def is_collection_exist(collection: str):
-    client = getClient()
-    result = client.has_collection(collection_name=collection)
-    client.close()
+    with getClient() as client:
+        result = client.has_collection(collection_name=collection)
+
     return result
 
 def is_partition_exist(collection:str, partition_name: str):
-    client = getClient()
+    with getClient() as client:
+        result = client.has_partition(
+            collection_name=collection,
+            partition_name=partition_name
+        )
 
-    result = client.has_partition(
-        collection_name=collection,
-        partition_name=partition_name
-    )
-
-    client.close()
     return result
     
 def create_partition(collection:str,  new_partition_name: str):
     if is_partition_exist(collection, new_partition_name):
         return
     
-    client = getClient()
-
-    client.create_partition(
-        collection_name = collection,
-        partition_name = new_partition_name
-    )
-
-    client.close()
+    with getClient() as client:
+        client.create_partition(
+            collection_name = collection,
+            partition_name = new_partition_name
+        )
 
 def create_embed_db(collection: str):
-    client = getClient()
-
     schema = MilvusClient.create_schema(auto_id=False)
 
     cn_analyzer_params = {
@@ -127,50 +130,48 @@ def create_embed_db(collection: str):
     )
     schema.add_function(cn_bm25_function)
 
-    index_params = client.prepare_index_params()
+    with getClient() as client:
+        index_params = client.prepare_index_params()
 
-    index_params.add_index(
-        field_name=FIELD_TEXT_DENSE,
-        index_name=FIELD_TEXT_DENSE + "_index",
-        index_type="AUTOINDEX",
-        metric_type="IP"
-    )
+        index_params.add_index(
+            field_name=FIELD_TEXT_DENSE,
+            index_name=FIELD_TEXT_DENSE + "_index",
+            index_type="AUTOINDEX",
+            metric_type="IP"
+        )
 
-    index_params.add_index(
-        field_name=FIELD_TEXT_SPARSE,
-        index_name=FIELD_TEXT_SPARSE + "_index",
-        index_type="SPARSE_INVERTED_INDEX",
-        metric_type="BM25",
-        params={"inverted_index_algo": "DAAT_MAXSCORE"}, # or "DAAT_WAND" or "TAAT_NAIVE"
-    )
-    index_params.add_index(
-        field_name=FIELD_CN_TEXT_SPARSE,
-        index_name=FIELD_CN_TEXT_SPARSE + "_index",
-        index_type="SPARSE_INVERTED_INDEX",
-        metric_type="BM25",
-        params={"inverted_index_algo": "DAAT_MAXSCORE"}, # or "DAAT_WAND" or "TAAT_NAIVE"
-    )
+        index_params.add_index(
+            field_name=FIELD_TEXT_SPARSE,
+            index_name=FIELD_TEXT_SPARSE + "_index",
+            index_type="SPARSE_INVERTED_INDEX",
+            metric_type="BM25",
+            params={"inverted_index_algo": "DAAT_MAXSCORE"}, # or "DAAT_WAND" or "TAAT_NAIVE"
+        )
+        index_params.add_index(
+            field_name=FIELD_CN_TEXT_SPARSE,
+            index_name=FIELD_CN_TEXT_SPARSE + "_index",
+            index_type="SPARSE_INVERTED_INDEX",
+            metric_type="BM25",
+            params={"inverted_index_algo": "DAAT_MAXSCORE"}, # or "DAAT_WAND" or "TAAT_NAIVE"
+        )
 
-    index_params.add_index(
-        field_name=FIELD_IMAGE_DENSE,
-        index_name=FIELD_IMAGE_DENSE + "_index",
-        index_type="AUTOINDEX",
-        metric_type="IP"
-    )
+        index_params.add_index(
+            field_name=FIELD_IMAGE_DENSE,
+            index_name=FIELD_IMAGE_DENSE + "_index",
+            index_type="AUTOINDEX",
+            metric_type="IP"
+        )
 
-    if client.has_collection(collection_name=collection):
-        client.drop_collection(collection_name=collection)
+        if client.has_collection(collection_name=collection):
+            client.drop_collection(collection_name=collection)
 
-    client.create_collection(
-        collection_name=collection,
-        schema=schema,
-        index_params=index_params
-    )
-
-    client.close()
+        client.create_collection(
+            collection_name=collection,
+            schema=schema,
+            index_params=index_params
+        )
 
 def delete_empty_data(collection: str):
-    client = getClient()
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
 
     # Step 2: Load the collection
@@ -185,12 +186,13 @@ def delete_empty_data(collection: str):
     ids = [result[FIELD_ID] for result in results if len(result[FIELD_TEXT]) == 0]
     if len(ids) == 0:
         return
-
-    res = client.delete(
-        collection_name=collection,
-        # highlight-next-line
-        ids=ids
-    )
+    
+    with getClient() as client:
+        res = client.delete(
+            collection_name=collection,
+            # highlight-next-line
+            ids=ids
+        )
 
 
 
@@ -264,19 +266,18 @@ def query(collection: str, partitions:Optional[List[str]] ,top_k:int = 10, query
 
     if len(reqs) == 0:
         return []
-    client = getClient()
     
-    ranker = RRFRanker(60)
-    res = client.hybrid_search(
-        collection_name=collection,
-        partition_names=partitions,
-        reqs=reqs,
-        ranker=ranker,
-        output_fields=[],
-        limit=top_k
-    )[0]
+    with getClient() as client:
+        ranker = RRFRanker(60)
+        res = client.hybrid_search(
+            collection_name=collection,
+            partition_names=partitions,
+            reqs=reqs,
+            ranker=ranker,
+            output_fields=[],
+            limit=top_k
+        )[0]
 
-    client.close()
     return [{FIELD_ID: hit[FIELD_ID], "distance": hit["distance"]} 
             for hit in res]
 
@@ -305,19 +306,16 @@ def insert_one(collection: str, partition:str, id = None, text= None, text_dense
         }
     ]
 
-    client = getClient() 
     try:
-        
-        res = client.upsert(
-            collection_name=collection,
-            partition_name=partition,
-            data=data
-        )
-        client.close()
+        with getClient() as client:
+            res = client.upsert(
+                collection_name=collection,
+                partition_name=partition,
+                data=data
+            )
         return True
     except Exception as e:
         print(e)
-        client.close()
         return False
 
 def delete_by_list(collection: str, ids: List[int]):
@@ -325,18 +323,15 @@ def delete_by_list(collection: str, ids: List[int]):
     if len(ids) == 0:
         return True
     
-    client = getClient()
-
     try:
-        res = client.delete(
-            collection_name=collection,
-            ids=ids
-        )
-        client.close()
+        with getClient() as client:
+            res = client.delete(
+                collection_name=collection,
+                ids=ids
+            )
         return True
     except Exception as e:
         print(e)
-        client.close()
         return False
 
 def delete_one(collection: str, id):
@@ -345,20 +340,29 @@ def delete_one(collection: str, id):
     
 def list_data(collection: str, partitions: Optional[List[str]] = None):
     '''return { id : text, ...}'''
-    client = getClient()
 
-    results = client.query(
-        collection_name=collection,  # empty expr returns all data
-        filter="",  # empty expr returns all data
-        output_fields=[FIELD_ID, FIELD_TEXT],  # list all text fields you want to extract
-        limit=100,
-        partition_names=partitions
-    )
+    with getClient() as client:
+        results = client.query(
+            collection_name=collection,  # empty expr returns all data
+            filter="",  # empty expr returns all data
+            output_fields=[FIELD_ID, FIELD_TEXT],  # list all text fields you want to extract
+            limit=100,
+            partition_names=partitions
+        )
 
-    client.close()
     return {tag[FIELD_ID]: tag[FIELD_TEXT] for tag in results} 
             
 
+def get_images_by_ids(collection: str, ids: List[int]):
+    '''return { id : text, ...}'''
+
+    with getClient() as client:
+        results = client.query(
+            collection_name=collection,
+            ids=ids,
+            output_fields=[FIELD_ID, FIELD_TEXT])
+        
+    return {tag[FIELD_ID]: tag[FIELD_TEXT] for tag in results} 
 
 def dump_json_data(collection: str, output_path: str = "data.json"):
     connections.connect(alias="default", host=milvus_host, port=mulvus_port)
@@ -392,17 +396,14 @@ def change_partition(collection: str, id: int, new_partition: str):
     '''
     change partition of a given id
     '''
-    client = getClient()
-
     try:
-        
-        image = client.get(
-            collection_name=collection,
-            ids=id,
-            output_fields=[FIELD_ID, FIELD_TEXT, FIELD_TEXT_DENSE, FIELD_IMAGE_DENSE]
-        )[0]
+        with getClient() as client:
+            image = client.get(
+                collection_name=collection,
+                ids=id,
+                output_fields=[FIELD_ID, FIELD_TEXT, FIELD_TEXT_DENSE, FIELD_IMAGE_DENSE]
+            )[0]
 
-        client.close()
         if delete_one(collection, id) == False:
             print(f"Error deleting image {id}  during partition change")
             return False
@@ -414,11 +415,10 @@ def change_partition(collection: str, id: int, new_partition: str):
         return True
     except Exception as e:
         print(e)
-        client.close()
         return False
 
 
-def insert_image(collection: str, id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None) -> bool:
+def insert_image(collection: str, id: int, filename:str, image: ImageFile, partition_id: Optional[int] = None, use_cache: bool = True) -> bool:
     image_format = image.format.lower()
 
     # Convert to BytesIO
@@ -426,7 +426,7 @@ def insert_image(collection: str, id: int, filename:str, image: ImageFile, parti
     image.save(buffer, format=image_format) 
     buffer.seek(0)  # rewind to the start of the stream
 
-    text = genai_api.explainImage(filename, image_format, buffer)
+    text = genai_api.explainImage(filename, image_format, buffer, use_cache)
     text_features = text_embed.get_text_embed_doc(text)
     image_features = clip_embed.get_image_embed(image)
 

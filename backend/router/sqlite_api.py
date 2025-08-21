@@ -1,3 +1,5 @@
+import threading
+import time
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
 from os import stat_result
@@ -262,3 +264,29 @@ def move_image_path(current: Path, new: Path, replace = False, session: Session 
 
 
 
+@router.post("/regendesc")
+def regen_desc(id: int, session: Session = Depends(get_session)):
+    image = session.get(Image, id)
+    
+    if image is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    watcher_sse.broadcast_start_processing_event()
+    file = Path(image.full_path)
+    name = file.name
+
+    pil_image = loadImage(file)
+
+    use_cache = False
+    if indexer.insert_image(indexer.COLLECTION_NAME, image.id, name, pil_image, image.directory_id, use_cache) == False:
+        raise HTTPException(
+            status_code=500,
+            detail="Vector db insert failed"
+        )
+    
+    # wait vector db write
+    time.sleep(1)
+
+    watcher_sse.broadcast_event("update", {"path": file.as_posix()})
+
+    watcher_sse.broadcast_stop_processing_event()

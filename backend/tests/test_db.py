@@ -57,7 +57,6 @@ def test_root(client: TestClient):
     assert data["Good"] == "v8"  
 
 def test_empyt_database(client: TestClient):
-    wait_before_read_vecdb()
     # sqlite db
     response = client.get("/image")
     data = response.json()
@@ -256,7 +255,7 @@ def test_delete_images(client: TestClient, session: Session):
     response = client.delete(f"/image/{id}")
     assert response.status_code == 200
 
-    wait_before_read_vecdb()
+    wait_before_read_vecdb(3)
     # sqlite db
     response = client.get("/image")
     data = response.json()
@@ -281,10 +280,13 @@ def test_delete_all_images(client: TestClient, session: Session):
     inesrt_or_update_image(PATH_HUSKY_IMAGE, session)
     inesrt_or_update_image(PATH_FLOWER_IMAGE, session)
 
+    wait_before_read_vecdb()
+
     response = client.delete("/image/delete_all")
     assert response.status_code == 200
+    assert response.json() == {"detail": "All images deleted"}
 
-    wait_before_read_vecdb()
+    wait_before_read_vecdb(3)
     # sqlite db
     response = client.get("/image")
     data = response.json()
@@ -344,7 +346,59 @@ def test_list_vecdb(client: TestClient, session: Session, tmp_path: Path):
     
     assert response.status_code == 404
 
+def test_text(client: TestClient, session: Session):
+
+    response = client.get("/api/text", params={"id": 1})
+    assert response.status_code == 404
+
+    inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
+    inesrt_or_update_image(PATH_HUSKY_IMAGE_2, session)
+
+    wait_before_read_vecdb()
+
+    id: int = 1
+    response = client.get("/api/text", params={"id": id})
+    assert response.status_code == 200
+
+    text = response.json()[str(id)]
+
+    assert "robot" in text
+
+    id = 2
+    response = client.get("/api/text", params={"id": id})
+    assert response.status_code == 200
+
+    text = response.json()[str(id)]
+
+    assert "Husky" in text
 
 
+def test_regenerate_description(client: TestClient, session: Session, monkeypatch):
+    inesrt_or_update_image(PATH_ROBOT_IMAGE, session)
+
+    wait_before_read_vecdb()
+
+    response = client.get("/image/lookup", params={"file": PATH_ROBOT_IMAGE})
+    assert response.status_code == 200
+
+    assert len(client.get("/api/list").json()) == 1
+
+    id: int = 1
+    texts = client.get("/api/text", params={"id": id}).json()
+    
+    assert response.status_code == 200
+    assert "robot" in texts[str(id)], texts
+
+    # fake explainImage
+    fakeDesc = "This is fake description"
+    monkeypatch.setattr(indexer.genai_api, 'explainImage', lambda *args, **kwargs: fakeDesc)
+    response = client.post("/image/regendesc", params={"id": id})
+    assert response.status_code == 200
+    
+    wait_before_read_vecdb()
+
+    texts = client.get("/api/text", params={"id": id}).json()
+    assert response.status_code == 200
+    assert fakeDesc == texts[str(id)]
 
 

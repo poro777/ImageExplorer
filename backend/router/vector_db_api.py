@@ -52,3 +52,10 @@ def query_all(path: Optional[str] = None):
     results = indexer.list_data(indexer.COLLECTION_NAME, partitions)
 
     return results
+
+@router.get('/text')
+def query_by_id(id: int):
+    results = indexer.get_images_by_ids(indexer.COLLECTION_NAME, [id])
+    if len(results) == 0:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return results

@@ -84,7 +84,7 @@
         <BPlaceholder cols="6" animation="glow"/>
       </div>
       <div v-else class="gallery">
-        <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img.full_path)">
+        <div v-for="(img, index) in results" :key="index" class="thumbnail" @click="openModal(img)">
           <BImg v-if="img.thumbnail_path != null" lazy :src="getThumbnailUrl(img.thumbnail_path)"></BImg>
           <BImg v-else lazy :src="getImageUrl(img.full_path)"></BImg>
         </div>
@@ -112,7 +112,7 @@
           v-for="(img, index) in group.list"
           :key="img.id"
           class="thumbnail"
-          @click="openModal(img.full_path)"
+          @click="openModal(img)"
         >
           <!-- Use full_path for dev-->
           <BImg v-if="img.thumbnail_path != null" lazy :src="getThumbnailUrl(img.thumbnail_path)"></BImg>
@@ -123,12 +123,24 @@
 
     <div v-if="showModal" class="modal" @click.self="closeModal">
 
-      <img :src="getImageUrl(currentImage)" class="modal-image" />
+      <img :src="getImageUrl(currentImage.full_path)" class="modal-image" />
       <BButton variant="primary" @click="openInfo" class="info-btn" size="sm" pill>!</BButton>
       <BButton variant="primary" @click="closeModal" class="close-btn" size="sm" pill>x</BButton>
       
-      <BModal v-model="showInfo" title="Info" style="z-index:101"> 
-        <p>Image Path: {{ currentImage }}</p>
+      <BModal v-model="showInfo" title="Info" style="z-index:101" size="lg" ok-only> 
+        <BAccordion free>
+          <BAccordionItem title="Image Path">
+            {{ currentImage.full_path }}
+          </BAccordionItem>
+          <BAccordionItem title="Generated Description">
+            <BButton variant="primary" @click.stop="regenDesc(currentImage.id)" size="sm" style="margin-left: 1em;">Re-Gen</BButton>
+            <VMarkdownView 
+              :mode="'light'"
+              :content="currentImage.desc"
+            ></VMarkdownView >
+          </BAccordionItem>
+        </BAccordion>
+
       </BModal>
       
     </div>
@@ -153,6 +165,8 @@ import axios from 'axios'
 import {folderAdder} from './watcher'
 import { useToastController } from 'bootstrap-vue-next'
 import { groupImages } from './groupImages'
+import { VMarkdownView  } from 'vue3-markdown'
+import 'vue3-markdown/dist/vue3-markdown.css'
 
 const showModal = ref(false)
 const showInfo = ref(false)
@@ -169,6 +183,7 @@ const currentPage = ref(1)
 
 const isQuerying = ref(false)
 const searched = ref(false)
+const imageDesc = ref('')
 
 let pageVisible = document.visibilityState === 'visible' ? true : false;
 
@@ -213,13 +228,17 @@ const getImageUrl = (path) => `http://127.0.0.1:8000/file?path=${encodeURICompon
 const getThumbnailUrl = (path) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
 
 
-const openModal = (full_path) => {
-  currentImage.value = full_path
+const openModal = (image) => {
+  currentImage.value = image
   showModal.value = true
 }
 
-const openInfo = () => {
+const openInfo = async () => {
   showInfo.value = true
+
+  if(currentImage.value.desc == null || currentImage.value.desc == ''){
+    groupedImages.updateDesc(currentImage.value.full_path)
+  }
 }
 const closeModal = () => {
   showModal.value = false
@@ -297,6 +316,14 @@ const fetchResults = async () => {
   }
 }
 
+const regenDesc = async (id) => {
+  const res = await axios.post('http://127.0.0.1:8000/image/regendesc', null, {
+    params: { 
+      id: id,
+    }
+  })
+}
+
 const source = new EventSource("http://127.0.0.1:8000/watcher/sse");
 let isOpenOnce = false;
 source.onopen = function() {
@@ -319,6 +346,12 @@ source.addEventListener("update", async  (event) => {
     });
 
     groupedImages.insertOrUpdateImage(res.data);
+
+
+    if(res.data.full_path == currentImage.value.full_path){
+      currentImage.value = res.data
+      groupedImages.updateDesc(res.data.full_path)
+    }
 
     create?.({
         props: {
@@ -374,10 +407,15 @@ source.addEventListener("remove", (event) => {
 
 source.addEventListener("start_processing", (event) => {
     watcherProcessing.value = true;
+    console.log("start_processing")
 });
 
 source.addEventListener("stop_processing", (event) => {
-    watcherProcessing.value = false;
+    setTimeout(() => {
+      watcherProcessing.value = false;
+      console.log("stop_processing")
+    }, 500);
+    
 });
 
 
