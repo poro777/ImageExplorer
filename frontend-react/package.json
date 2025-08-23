@@ -1,0 +1,41 @@
+{
+  "name": "frontend-react",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "_start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "electron": "electron electron/main.cjs",
+    "start": "concurrently \"npm run dev\" \"npm run electron\""
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.1",
+    "@mui/material": "^7.3.1",
+    "@mui/styled-engine-sc": "^7.3.1",
+    "@react-router/node": "^7.7.1",
+    "@react-router/serve": "^7.7.1",
+    "axios": "^1.11.0",
+    "isbot": "^5.1.27",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.7.1",
+    "styled-components": "^6.1.19"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.7.1",
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/node": "^20",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "concurrently": "^9.2.0",
+    "electron": "^37.3.1",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}
