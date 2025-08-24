@@ -16,6 +16,10 @@ import MailIcon from '@mui/icons-material/Mail';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import MoreIcon from '@mui/icons-material/MoreVert';
 
+import type { Image } from './images';
+import axios from 'axios';
+import Button from '@mui/material/Button';
+
 const Search = styled('div')(({ theme }) => ({
   position: 'relative',
   borderRadius: theme.shape.borderRadius,
@@ -56,9 +60,37 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
   },
 }));
 
-export default function PrimarySearchAppBar() {
+export default function PrimarySearchAppBar(props: {setResult: React.Dispatch<React.SetStateAction<Image[]>>}) {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const isMenuOpen = Boolean(anchorEl);
+  const queryText = React.useRef<HTMLInputElement>(null);
+  
+  const query = () => {
+    if(queryText.current?.value.length === 0){
+        props.setResult([]);
+    }
+    else{
+        axios.get('http://127.0.0.1:8000/api/query', {
+        params: { 
+            text: queryText.current?.value, 
+            use_text_embed : true, 
+            use_bm25 : true, 
+            use_joint_embed : true,
+            path: null
+        }
+        }).then(res => {
+            props.setResult(res.data);
+        }).catch(err => {
+            console.log(err);
+        });
+    }
+  }
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      query();
+    }
+  }
 
   const handleMenuClose = () => {
     setAnchorEl(null);
@@ -114,8 +146,12 @@ export default function PrimarySearchAppBar() {
             <StyledInputBase
               placeholder="Search…"
               inputProps={{ 'aria-label': 'search' }}
+              inputRef={queryText}
+              onKeyDown={handleKeyDown}
             />
+            <Button variant="contained" color="secondary" size='small' sx={{marginRight: 0.5}} onClick={query}>Go</Button>
           </Search>
+
           <Box sx={{ flexGrow: 1 }} />
           <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
             <IconButton size="large" aria-label="show 4 new mails" color="inherit">

@@ -22,8 +22,14 @@ export type Image = {
 type Folder = { dirname: string, list: Image[], initialized: boolean };
 
 export const getImageUrl = (path: string) => `http://127.0.0.1:8000/file?path=${encodeURIComponent(path)}`
-const getThumbnailUrl = (path: string) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
-
+export const getThumbnailUrl = (path: string) => `http://127.0.0.1:8000/thumbnail/${encodeURIComponent(path)}`
+export function getThumbnailSource(image: Image) {
+  if (image.thumbnail_path) {
+    return getThumbnailUrl(image.thumbnail_path);
+  } else {
+    return getImageUrl(image.full_path);
+  }
+}
 
 const DirTitle = styled('h2')(({ theme }) => ({
   fontSize: '1.2rem',
@@ -44,7 +50,7 @@ const DirBolck = styled('div')(({ theme }) => ({
 }));
 
 
-export default function GroupImages(props: {setModalImage: Dispatch<SetStateAction<Image | null>>}) {
+export function GroupImages(props: {setModalImage: Dispatch<SetStateAction<Image | null>>}) {
   const [groupedImages, setGroup] = useState<Folder[]>([]);
   const [count, setcount] = useState(0);
 
@@ -91,14 +97,6 @@ export default function GroupImages(props: {setModalImage: Dispatch<SetStateActi
 
   const renderedGroups = slice(0, count);
   
-  function getThumbnailSource(image: Image) {
-    if (image.thumbnail_path) {
-      return getThumbnailUrl(image.thumbnail_path);
-    } else {
-      return getImageUrl(image.full_path);
-    }
-  }
-
   return renderedGroups.map(images =><DirBolck key={images.dirname}>
     <DirTitle>Folder {images.dirname}</DirTitle>
     <ImageList cols={6}>
@@ -115,4 +113,25 @@ export default function GroupImages(props: {setModalImage: Dispatch<SetStateActi
       ))}
     </ImageList>
   </DirBolck>)
+}
+
+export function SearchResult(props: {results: Image[], setModalImage: Dispatch<SetStateAction<Image | null>>}){
+    const results = props.results
+
+    return <DirBolck>
+    <DirTitle>Results: {results.length}</DirTitle>
+    <ImageList cols={6}>
+      {results.map((image) => (
+        <ImageListItem key={image.thumbnail_path} onClick={()=>props.setModalImage(image)}>
+          <img
+            src={getThumbnailSource(image)}
+            alt={image.filename}
+            loading="lazy"
+            className='thumbnail'
+          />
+
+        </ImageListItem>
+      ))}
+    </ImageList>
+  </DirBolck> 
 }
