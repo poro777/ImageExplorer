@@ -237,7 +237,11 @@ const openInfo = async () => {
   showInfo.value = true
 
   if(currentImage.value.desc == null || currentImage.value.desc == ''){
-    groupedImages.updateDesc(currentImage.value.full_path)
+    groupedImages.updateDesc(currentImage.value.full_path).then((desc) => {
+      // currentImage is search result
+      if(currentImage.value.desc == null)
+        currentImage.value.desc = desc
+    })
   }
 }
 const closeModal = () => {
