@@ -21,6 +21,20 @@ These uploads are necessary for the AI-powered features to work, but they may ex
 
 If your images contain sensitive, private, or confidential information, **do not enable monitoring on those folders**.
 
+## Screenshot
+- Search Images by Text: Quickly locate specific images within your added folders by typing keywords into the search bar. 
+
+- Add/Remove Folders: Effortlessly manage your image directories. 
+
+- Image Viewer: Browse your image collection with ease. The application displays images in a clear and organized manner, allowing you to view thumbnails of all images within your added folders.
+![](./screenshot/index_page.png)
+
+- Image Modal: Full-screen overlay
+![](./screenshot/image_modal.png)
+
+- Image information: Provides detailed information and AI-generated descriptions for a selected image
+![](./screenshot/image_info.png)
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
