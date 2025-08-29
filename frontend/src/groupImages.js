@@ -58,12 +58,12 @@ export function groupImages() {
     const dirPath = full_path.substring(0, full_path.lastIndexOf('/'));
     const group = images.value.find(g => g.dirname === dirPath);
     if (!group) {
-      return
+      return ""
     }
 
     const index = group.list.findIndex(img => img.full_path === full_path);
     if (index === -1) {
-      return;
+      return "";
     }
 
     const image = group.list[index];
@@ -74,9 +74,11 @@ export function groupImages() {
         params: { id: id }
       })
       image.desc = res.data[id].replace(/\\n/g, "\n")   // backend should return plain text or JSON {text: "..."}
+      return image.desc
     } catch (err) {
       console.error("Failed to fetch text:", err)
     }
+    return ""
   }
 
   function deleteImage(full_path) {
